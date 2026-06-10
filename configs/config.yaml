@@ -3,6 +3,9 @@ train_dir: "train"
 val_dir: "val"
 test_dir: "test"
 celebdf_test_root: "D:/duong_huy_ct7/deepfake-data/celeb-df/test"
+gan_data_root: "gan"
+gan_train_dir: null
+gan_label: 1.0
 
 image_size: 380
 batch_size: 16
@@ -14,6 +17,8 @@ dropout: 0.4
 pretrained: true
 original_upsample_factor: 3
 save_dir: "checkpoints"
+gan_save_dir: "checkpoints"
+gan_checkpoint_name: "best_model_with_gan.pth"
 resume_from: null
 seed: 42
 threshold: 0.5

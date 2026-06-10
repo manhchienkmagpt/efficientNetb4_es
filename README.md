@@ -62,6 +62,24 @@ test/
 
 Supported image extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp`.
 
+GAN training data can be configured with `gan_data_root` in `configs/config.yaml`.
+All supported images found under this folder are treated as fake samples with label `1`.
+The default local layout is:
+
+```text
+gan/
++-- image_001.jpg
+`-- image_002.jpg
+```
+
+If your GAN data has a split folder such as `gan/train`, set:
+
+```yaml
+gan_data_root: "path/to/gan"
+gan_train_dir: "train"
+gan_label: 1.0
+```
+
 ## Train
 
 Edit `configs/config.yaml` if needed, then run:
@@ -94,6 +112,26 @@ Training uses:
 - Base eval transform only for original train samples that are not upsampled
 
 `original_upsample_factor: N` keeps all original samples and adds `N` extra augmented copies for each original training image.
+
+## Train With GAN Data
+
+Edit `gan_data_root` in `configs/config.yaml`, then run:
+
+```bash
+python train_with_gan.py --config configs/config.yaml
+```
+
+Resume from a checkpoint:
+
+```bash
+python train_with_gan.py --config configs/config.yaml --resume checkpoints/best_model_with_gan.pth
+```
+
+This script trains on FF++ train data plus GAN train data and keeps FF++ validation unchanged. The best checkpoint defaults to:
+
+```text
+checkpoints/best_model_with_gan.pth
+```
 
 ## Test FF++
 

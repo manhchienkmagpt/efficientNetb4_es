@@ -182,3 +182,65 @@ class DeepfakeFrameDataset(Dataset):
                 return self.train_transform or self.eval_transform
             return self.eval_transform
         return self.eval_transform
+
+
+class GANFrameDataset(Dataset):
+    """Frame-level dataset for GAN-generated fake images."""
+
+    def __init__(
+        self,
+        root_dir: str,
+        split: Optional[str] = None,
+        train_transform: Optional[A.Compose] = None,
+        eval_transform: Optional[A.Compose] = None,
+        mode: Optional[str] = None,
+        label: float = 1.0,
+    ) -> None:
+        self.root_dir = Path(root_dir)
+        self.split = split
+        self.train_transform = train_transform
+        self.eval_transform = eval_transform
+        self.mode = (mode or split or "train").lower()
+        self.label = float(label)
+
+        self.split_dir = self._resolve_split_dir()
+        self.samples: List[Tuple[Path, float]] = self._collect_samples()
+
+        if not self.samples:
+            raise RuntimeError(f"No supported GAN images found in {self.split_dir}")
+
+    def _resolve_split_dir(self) -> Path:
+        split_dir = self.root_dir / self.split if self.split else self.root_dir
+        if not split_dir.exists():
+            raise FileNotFoundError(f"GAN dataset folder does not exist: {split_dir}")
+        if not split_dir.is_dir():
+            raise NotADirectoryError(f"GAN dataset path is not a directory: {split_dir}")
+        return split_dir
+
+    def _collect_class_images(self, class_dir: Path) -> List[Path]:
+        return sorted(
+            path
+            for path in class_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+        )
+
+    def _collect_samples(self) -> List[Tuple[Path, float]]:
+        return [(path, self.label) for path in self._collect_class_images(self.split_dir)]
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int):
+        image_path, label = self.samples[index]
+        image = cv2.imread(str(image_path))
+        if image is None:
+            raise RuntimeError(f"Failed to read GAN image: {image_path}")
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        transform = self.train_transform if self.mode == "train" else self.eval_transform
+        transform = transform or self.eval_transform
+        if transform is not None:
+            image = transform(image=image)["image"]
+
+        label_tensor = torch.tensor(label, dtype=torch.float32)
+        return image, label_tensor, str(image_path)
