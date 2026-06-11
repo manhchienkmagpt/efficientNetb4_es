@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import ConcatDataset, DataLoader
 
 from datasets import DeepfakeFrameDataset, GANFrameDataset, get_eval_transform, get_train_transform
-from models import EfficientNetB4_ES
+from models import build_model
 from train import current_lrs, load_config, lr_reduced, resolve_device, run_one_epoch
 from utils.checkpoint import load_checkpoint, save_checkpoint
 from utils.metrics import format_metrics
@@ -18,16 +18,16 @@ from utils.seed import set_seed
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train EfficientNetB4-ES with FF++ and GAN data")
+    parser = argparse.ArgumentParser(description="Train a configurable backbone with FF++ and GAN data")
     parser.add_argument("--config", type=str, default="configs/config.yaml", help="Path to config YAML")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume training")
     return parser.parse_args()
 
 
-def _optional_split(config: Dict, key: str):
+def _required_gan_dir(config: Dict, key: str) -> str:
     value = config.get(key)
     if value in (None, "", "null"):
-        return None
+        raise ValueError(f"Missing {key} in config.")
     return str(value)
 
 
@@ -46,12 +46,11 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         mode="train",
     )
     gan_train_dataset = GANFrameDataset(
-        root_dir=config["gan_data_root"],
-        split=_optional_split(config, "gan_train_dir"),
+        fake_dir=_required_gan_dir(config, "gan_fake_dir"),
+        real_dir=_required_gan_dir(config, "gan_real_dir"),
         train_transform=train_transform,
         eval_transform=eval_transform,
         mode="train",
-        label=float(config.get("gan_label", 1.0)),
     )
     val_dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
@@ -86,8 +85,8 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
 def main():
     args = parse_args()
     config = load_config(args.config)
-    if not config.get("gan_data_root"):
-        raise ValueError("Missing gan_data_root in config. Set it to your GAN dataset folder.")
+    if not config.get("gan_fake_dir") or not config.get("gan_real_dir"):
+        raise ValueError("Set gan_fake_dir and gan_real_dir in config.")
 
     set_seed(int(config.get("seed", 42)))
 
@@ -101,9 +100,13 @@ def main():
     print(f"Train samples: {len(train_loader.dataset)}")
     print(f"Val samples: {len(val_loader.dataset)}")
 
-    model = EfficientNetB4_ES(
+    backbone = str(config.get("backbone", "efficientnetb4_es"))
+    print(f"Backbone: {backbone}")
+    model = build_model(
+        backbone=backbone,
         pretrained=bool(config.get("pretrained", True)),
         dropout=float(config.get("dropout", 0.4)),
+        image_size=int(config["image_size"]),
     ).to(device)
 
     criterion = nn.BCEWithLogitsLoss()

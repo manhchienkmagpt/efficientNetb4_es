@@ -9,13 +9,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from datasets import DeepfakeFrameDataset, get_eval_transform
-from models import EfficientNetB4_ES
+from models import build_model
 from utils.checkpoint import load_checkpoint
 from utils.metrics import binary_confusion_matrix, compute_binary_metrics, format_metrics
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Test EfficientNetB4-ES on CelebDF")
+    parser = argparse.ArgumentParser(description="Test a configurable backbone on CelebDF")
     parser.add_argument("--config", type=str, default="configs/config.yaml", help="Path to config YAML")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/best_model.pth", help="Checkpoint path")
     parser.add_argument("--output-csv", type=str, default="celebdf_test_predictions.csv", help="CSV output path")
@@ -78,9 +78,11 @@ def main():
         pin_memory=True,
     )
 
-    model = EfficientNetB4_ES(
+    model = build_model(
+        backbone=str(config.get("backbone", "efficientnetb4_es")),
         pretrained=False,
         dropout=float(config.get("dropout", 0.4)),
+        image_size=int(config["image_size"]),
     ).to(device)
     checkpoint = load_checkpoint(args.checkpoint, device)
     model.load_state_dict(checkpoint["model_state_dict"])

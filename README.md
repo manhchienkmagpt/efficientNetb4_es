@@ -1,6 +1,6 @@
-# EfficientNetB4-ES Deepfake Detection
+# Deepfake Detection Backbones
 
-PyTorch project for binary deepfake frame detection with an EfficientNet-B4 ImageNet backbone, ECA attention, and SCConv. The model outputs one raw logit. Training uses `BCEWithLogitsLoss`; inference converts logits with `torch.sigmoid`.
+PyTorch project for binary deepfake frame detection with a configurable ImageNet backbone, ECA attention, and SCConv. The model outputs one raw logit. Training uses `BCEWithLogitsLoss`; inference converts logits with `torch.sigmoid`.
 
 Labels:
 
@@ -62,22 +62,22 @@ test/
 
 Supported image extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp`.
 
-GAN training data can be configured with `gan_data_root` in `configs/config.yaml`.
-All supported images found under this folder are treated as fake samples with label `1`.
+GAN training data can be configured with `gan_fake_dir` and `gan_real_dir` in `configs/config.yaml`.
+Images under `gan_fake_dir` use label `1`; images under `gan_real_dir` use label `0`.
 The default local layout is:
 
 ```text
-gan/
-+-- image_001.jpg
-`-- image_002.jpg
++-- gan_fake/
+|   `-- fake_001.jpg
+`-- gan_real/
+    `-- real_001.jpg
 ```
 
-If your GAN data has a split folder such as `gan/train`, set:
+Set the two folders directly:
 
 ```yaml
-gan_data_root: "path/to/gan"
-gan_train_dir: "train"
-gan_label: 1.0
+gan_fake_dir: "path/to/gan_fake"
+gan_real_dir: "path/to/gan_real"
 ```
 
 ## Train
@@ -86,6 +86,12 @@ Edit `configs/config.yaml` if needed, then run:
 
 ```bash
 python train.py --config configs/config.yaml
+```
+
+Choose a backbone in `configs/config.yaml`:
+
+```yaml
+backbone: "efficientnetb4_es"  # options: efficientnetb4_es, resnet50, swin_tiny
 ```
 
 Resume from a checkpoint:

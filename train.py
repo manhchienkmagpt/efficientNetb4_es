@@ -12,14 +12,14 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
-from models import EfficientNetB4_ES
+from models import build_model
 from utils.checkpoint import load_checkpoint, save_checkpoint
 from utils.metrics import compute_binary_metrics, format_metrics
 from utils.seed import set_seed
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train EfficientNetB4-ES for deepfake detection")
+    parser = argparse.ArgumentParser(description="Train a configurable backbone for deepfake detection")
     parser.add_argument("--config", type=str, default="configs/config.yaml", help="Path to config YAML")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume training")
     return parser.parse_args()
@@ -139,9 +139,13 @@ def main():
     print(f"Train samples: {len(train_loader.dataset)}")
     print(f"Val samples: {len(val_loader.dataset)}")
 
-    model = EfficientNetB4_ES(
+    backbone = str(config.get("backbone", "efficientnetb4_es"))
+    print(f"Backbone: {backbone}")
+    model = build_model(
+        backbone=backbone,
         pretrained=bool(config.get("pretrained", True)),
         dropout=float(config.get("dropout", 0.4)),
+        image_size=int(config["image_size"]),
     ).to(device)
 
     criterion = nn.BCEWithLogitsLoss()

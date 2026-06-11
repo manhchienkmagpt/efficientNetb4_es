@@ -185,37 +185,55 @@ class DeepfakeFrameDataset(Dataset):
 
 
 class GANFrameDataset(Dataset):
-    """Frame-level dataset for GAN-generated fake images."""
+    """Frame-level dataset for GAN fake and real image folders."""
 
     def __init__(
         self,
-        root_dir: str,
+        root_dir: Optional[str] = None,
         split: Optional[str] = None,
+        fake_dir: Optional[str] = None,
+        real_dir: Optional[str] = None,
         train_transform: Optional[A.Compose] = None,
         eval_transform: Optional[A.Compose] = None,
         mode: Optional[str] = None,
         label: float = 1.0,
     ) -> None:
-        self.root_dir = Path(root_dir)
+        self.root_dir = Path(root_dir) if root_dir is not None else None
         self.split = split
+        self.fake_dir = Path(fake_dir) if fake_dir is not None else None
+        self.real_dir = Path(real_dir) if real_dir is not None else None
         self.train_transform = train_transform
         self.eval_transform = eval_transform
         self.mode = (mode or split or "train").lower()
         self.label = float(label)
 
-        self.split_dir = self._resolve_split_dir()
+        self.sources = self._resolve_sources()
         self.samples: List[Tuple[Path, float]] = self._collect_samples()
 
         if not self.samples:
-            raise RuntimeError(f"No supported GAN images found in {self.split_dir}")
+            source_paths = ", ".join(str(source_dir) for source_dir, _ in self.sources)
+            raise RuntimeError(f"No supported GAN images found in: {source_paths}")
 
-    def _resolve_split_dir(self) -> Path:
-        split_dir = self.root_dir / self.split if self.split else self.root_dir
+    def _resolve_image_dir(self, image_dir: Path, description: str) -> Path:
+        split_dir = image_dir / self.split if self.split else image_dir
         if not split_dir.exists():
-            raise FileNotFoundError(f"GAN dataset folder does not exist: {split_dir}")
+            raise FileNotFoundError(f"{description} folder does not exist: {split_dir}")
         if not split_dir.is_dir():
-            raise NotADirectoryError(f"GAN dataset path is not a directory: {split_dir}")
+            raise NotADirectoryError(f"{description} path is not a directory: {split_dir}")
         return split_dir
+
+    def _resolve_sources(self) -> List[Tuple[Path, float]]:
+        if self.fake_dir is not None or self.real_dir is not None:
+            if self.fake_dir is None or self.real_dir is None:
+                raise ValueError("Set both fake_dir and real_dir for GANFrameDataset.")
+            return [
+                (self._resolve_image_dir(self.fake_dir, "GAN fake"), 1.0),
+                (self._resolve_image_dir(self.real_dir, "GAN real"), 0.0),
+            ]
+
+        if self.root_dir is None:
+            raise ValueError("Set either root_dir or both fake_dir and real_dir for GANFrameDataset.")
+        return [(self._resolve_image_dir(self.root_dir, "GAN dataset"), self.label)]
 
     def _collect_class_images(self, class_dir: Path) -> List[Path]:
         return sorted(
@@ -225,7 +243,10 @@ class GANFrameDataset(Dataset):
         )
 
     def _collect_samples(self) -> List[Tuple[Path, float]]:
-        return [(path, self.label) for path in self._collect_class_images(self.split_dir)]
+        samples: List[Tuple[Path, float]] = []
+        for image_dir, label in self.sources:
+            samples.extend((path, label) for path in self._collect_class_images(image_dir))
+        return samples
 
     def __len__(self) -> int:
         return len(self.samples)
