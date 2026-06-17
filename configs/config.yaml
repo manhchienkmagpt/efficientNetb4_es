@@ -2,7 +2,7 @@ data_root: "D:/duong_huy_ct7/deepfake-data"
 train_dir: "train"
 val_dir: "val"
 test_dir: "test"
-celebdf_test_root: "D:/duong_huy_ct7/deepfake-data/celeb-df/test"
+cross_dataset_root: "D:/duong_huy_ct7/deepfake-data/celeb-df/test"
 gan_fake_dir: "gan_fake"
 gan_real_dir: "gan_real"
 
@@ -15,7 +15,7 @@ weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
 backbone: "efficientnetb4_es"  # options: efficientnetb4_es, resnet50, swin_tiny
-original_upsample_factor: 3
+original_upsample_factor: null
 save_dir: "checkpoints"
 gan_save_dir: "checkpoints"
 gan_checkpoint_name: "best_model_with_gan.pth"

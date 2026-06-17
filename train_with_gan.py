@@ -18,7 +18,7 @@ from utils.seed import set_seed
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a configurable backbone with FF++ and GAN data")
+    parser = argparse.ArgumentParser(description="Train a configurable backbone with origin and GAN data")
     parser.add_argument("--config", type=str, default="configs/config.yaml", help="Path to config YAML")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume training")
     return parser.parse_args()
@@ -39,10 +39,10 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     ffpp_train_dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
         split=config["train_dir"],
-        dataset_type="ffpp",
+        dataset_type="origin",
         train_transform=train_transform,
         eval_transform=eval_transform,
-        original_upsample_factor=int(config.get("original_upsample_factor", 0)),
+        original_upsample_factor=config.get("original_upsample_factor"),
         mode="train",
     )
     gan_train_dataset = GANFrameDataset(
@@ -55,7 +55,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     val_dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
         split=config["val_dir"],
-        dataset_type="ffpp",
+        dataset_type="origin",
         train_transform=None,
         eval_transform=eval_transform,
         original_upsample_factor=0,

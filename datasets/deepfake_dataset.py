@@ -1,6 +1,6 @@
 import inspect
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import albumentations as A
 import cv2
@@ -11,19 +11,12 @@ from torch.utils.data import Dataset
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
-FFPP_LABELS: Dict[str, int] = {
-    "original": 0,
-    "Deepfakes": 1,
-    "Face2Face": 1,
-    "FaceShifter": 1,
-    "FaceSwap": 1,
-    "NeuralTextures": 1,
-}
-
-CELEBDF_LABELS: Dict[str, int] = {
+ORIGIN_DATASET_LABELS: Dict[str, int] = {
     "real": 0,
     "fake": 1,
 }
+
+CROSS_DATASET_LABELS: Dict[str, int] = ORIGIN_DATASET_LABELS
 
 
 def _coarse_dropout():
@@ -82,7 +75,7 @@ def get_eval_transform(image_size: int = 380) -> A.Compose:
 
 
 class DeepfakeFrameDataset(Dataset):
-    """Frame-level dataset for FF++ and CelebDF-style folder layouts."""
+    """Frame-level dataset for split folders with real/fake class directories."""
 
     def __init__(
         self,
@@ -91,7 +84,7 @@ class DeepfakeFrameDataset(Dataset):
         dataset_type: str = "ffpp",
         train_transform: Optional[A.Compose] = None,
         eval_transform: Optional[A.Compose] = None,
-        original_upsample_factor: int = 0,
+        original_upsample_factor: Optional[Union[int, str]] = 0,
         mode: Optional[str] = None,
     ) -> None:
         self.root_dir = Path(root_dir)
@@ -100,7 +93,7 @@ class DeepfakeFrameDataset(Dataset):
         self.mode = (mode or split or "test").lower()
         self.train_transform = train_transform
         self.eval_transform = eval_transform
-        self.original_upsample_factor = max(0, int(original_upsample_factor))
+        self.original_upsample_factor = self._normalize_upsample_factor(original_upsample_factor)
 
         self.split_dir = self._resolve_split_dir()
         self.class_to_label = self._get_class_mapping()
@@ -118,11 +111,17 @@ class DeepfakeFrameDataset(Dataset):
         return split_dir
 
     def _get_class_mapping(self) -> Dict[str, int]:
-        if self.dataset_type == "ffpp":
-            return FFPP_LABELS
-        if self.dataset_type == "celebdf":
-            return CELEBDF_LABELS
-        raise ValueError("dataset_type must be either 'ffpp' or 'celebdf'")
+        if self.dataset_type in {"ffpp", "origin", "original"}:
+            return ORIGIN_DATASET_LABELS
+        if self.dataset_type in {"celebdf", "cross"}:
+            return CROSS_DATASET_LABELS
+        raise ValueError("dataset_type must be one of: ffpp, origin, original, celebdf, cross")
+
+    @staticmethod
+    def _normalize_upsample_factor(value: Optional[Union[int, str]]) -> int:
+        if value in (None, "", "none", "None", "null"):
+            return 0
+        return max(0, int(value))
 
     def _collect_class_images(self, class_dir: Path) -> List[Path]:
         return sorted(
@@ -133,7 +132,7 @@ class DeepfakeFrameDataset(Dataset):
 
     def _collect_samples(self) -> List[Tuple[Path, float, bool]]:
         samples: List[Tuple[Path, float, bool]] = []
-        original_samples: List[Tuple[Path, float, bool]] = []
+        real_samples: List[Tuple[Path, float, bool]] = []
         missing_classes: List[str] = []
 
         for class_name, label in self.class_to_label.items():
@@ -145,15 +144,15 @@ class DeepfakeFrameDataset(Dataset):
             class_samples = [(path, float(label), False) for path in self._collect_class_images(class_dir)]
             samples.extend(class_samples)
 
-            if self.dataset_type == "ffpp" and class_name == "original":
-                original_samples = class_samples
+            if class_name == "real":
+                real_samples = class_samples
 
         if missing_classes:
             print(f"Warning: missing class folders under {self.split_dir}: {', '.join(missing_classes)}")
 
-        if self.dataset_type == "ffpp" and self.mode == "train" and self.original_upsample_factor > 0:
+        if self.mode == "train" and self.original_upsample_factor > 0:
             for _ in range(self.original_upsample_factor):
-                samples.extend((path, label, True) for path, label, _ in original_samples)
+                samples.extend((path, label, True) for path, label, _ in real_samples)
 
         return samples
 

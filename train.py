@@ -56,16 +56,16 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     train_dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
         split=config["train_dir"],
-        dataset_type="ffpp",
+        dataset_type="origin",
         train_transform=train_transform,
         eval_transform=eval_transform,
-        original_upsample_factor=int(config.get("original_upsample_factor", 0)),
+        original_upsample_factor=config.get("original_upsample_factor"),
         mode="train",
     )
     val_dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
         split=config["val_dir"],
-        dataset_type="ffpp",
+        dataset_type="origin",
         train_transform=None,
         eval_transform=eval_transform,
         original_upsample_factor=0,

@@ -4,23 +4,24 @@ PyTorch project for binary deepfake frame detection with a configurable ImageNet
 
 Labels:
 
-- `original` / `real`: `0`
-- fake classes: `1`
+- `real`: `0`
+- `fake`: `1`
 
 ## Project Structure
 
 ```text
 deepfake_efficientnetb4_es/
-├── configs/config.yaml
-├── datasets/deepfake_dataset.py
-├── models/efficientnetb4_es.py
-├── models/modules.py
-├── utils/
-├── train.py
-├── test_ffpp.py
-├── test_celebdf.py
-├── requirements.txt
-└── README.md
+|-- configs/config.yaml
+|-- datasets/deepfake_dataset.py
+|-- models/efficientnetb4_es.py
+|-- models/modules.py
+|-- utils/
+|-- train.py
+|-- train_with_gan.py
+|-- test_origin_dataset.py
+|-- test_cross_dataset.py
+|-- requirements.txt
+`-- README.md
 ```
 
 ## Install
@@ -40,40 +41,33 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 ## Data Layout
 
-FF++ data is expected at `D:/duong_huy_ct7/deepfake-data`:
+Origin train, validation, and test data are expected under `data_root`:
 
 ```text
-train|val|test/
-├── original
-├── Deepfakes
-├── Face2Face
-├── FaceShifter
-├── FaceSwap
-└── NeuralTextures
+root/
+|-- train/
+|   |-- real/
+|   `-- fake/
+|-- val/
+|   |-- real/
+|   `-- fake/
+`-- test/
+    |-- real/
+    `-- fake/
 ```
 
-CelebDF test data is expected at `D:/duong_huy_ct7/deepfake-data/celeb-df/test`:
+The cross-dataset test root is configured with `cross_dataset_root` and should contain:
 
 ```text
-test/
-├── fake
-└── real
+cross_dataset_root/
+|-- real/
+`-- fake/
 ```
 
 Supported image extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp`.
 
 GAN training data can be configured with `gan_fake_dir` and `gan_real_dir` in `configs/config.yaml`.
 Images under `gan_fake_dir` use label `1`; images under `gan_real_dir` use label `0`.
-The default local layout is:
-
-```text
-+-- gan_fake/
-|   `-- fake_001.jpg
-`-- gan_real/
-    `-- real_001.jpg
-```
-
-Set the two folders directly:
 
 ```yaml
 gan_fake_dir: "path/to/gan_fake"
@@ -114,14 +108,14 @@ Training uses:
 - `AdamW`
 - `ReduceLROnPlateau(mode="max")` tracking validation accuracy
 - Early stopping tracking validation accuracy
-- Strong augmentation for fake train samples and upsampled original samples
-- Base eval transform only for original train samples that are not upsampled
+- Strong augmentation for fake train samples and upsampled real samples
+- Base eval transform only for real train samples that are not upsampled
 
-`original_upsample_factor: N` keeps all original samples and adds `N` extra augmented copies for each original training image.
+Set `original_upsample_factor: null` to disable upsampling. Set it to `N` to keep all real samples and add `N` extra augmented copies for each real training image.
 
 ## Train With GAN Data
 
-Edit `gan_data_root` in `configs/config.yaml`, then run:
+Edit `gan_fake_dir` and `gan_real_dir` in `configs/config.yaml`, then run:
 
 ```bash
 python train_with_gan.py --config configs/config.yaml
@@ -133,34 +127,34 @@ Resume from a checkpoint:
 python train_with_gan.py --config configs/config.yaml --resume checkpoints/best_model_with_gan.pth
 ```
 
-This script trains on FF++ train data plus GAN train data and keeps FF++ validation unchanged. The best checkpoint defaults to:
+This script trains on origin train data plus GAN train data and keeps origin validation unchanged. The best checkpoint defaults to:
 
 ```text
 checkpoints/best_model_with_gan.pth
 ```
 
-## Test FF++
+## Test Origin Dataset
 
 ```bash
-python test_ffpp.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth
+python test_origin_dataset.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth
 ```
 
 Optional CSV path:
 
 ```bash
-python test_ffpp.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth --output-csv outputs/ffpp_predictions.csv
+python test_origin_dataset.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth --output-csv outputs/origin_predictions.csv
 ```
 
-## Test CelebDF
+## Test Cross Dataset
 
 ```bash
-python test_celebdf.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth
+python test_cross_dataset.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth
 ```
 
 Optional CSV path:
 
 ```bash
-python test_celebdf.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth --output-csv outputs/celebdf_predictions.csv
+python test_cross_dataset.py --config configs/config.yaml --checkpoint checkpoints/best_model.pth --output-csv outputs/cross_predictions.csv
 ```
 
 Both test scripts print Accuracy, F1, Precision, Recall, AUC, and the confusion matrix, and save per-image predictions with:
