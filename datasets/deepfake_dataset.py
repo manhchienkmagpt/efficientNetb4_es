@@ -19,26 +19,18 @@ ORIGIN_DATASET_LABELS: Dict[str, int] = {
 CROSS_DATASET_LABELS: Dict[str, int] = ORIGIN_DATASET_LABELS
 
 
-def _coarse_dropout():
-    signature = inspect.signature(A.CoarseDropout)
-    if "num_holes_range" in signature.parameters:
-        return A.CoarseDropout(
-            num_holes_range=(1, 8),
-            hole_height_range=(0.03, 0.12),
-            hole_width_range=(0.03, 0.12),
-            fill=0,
-            p=0.35,
-        )
-    return A.CoarseDropout(
-        max_holes=8,
-        max_height=48,
-        max_width=48,
-        min_holes=1,
-        min_height=12,
-        min_width=12,
-        fill_value=0,
-        p=0.35,
-    )
+def _gauss_noise():
+    signature = inspect.signature(A.GaussNoise)
+    if "std_range" in signature.parameters:
+        return A.GaussNoise(std_range=(0.01, 0.03), p=0.3)
+    return A.GaussNoise(var_limit=(6.5, 58.5), mean=0, p=0.3)
+
+
+def _image_compression():
+    signature = inspect.signature(A.ImageCompression)
+    if "quality_range" in signature.parameters:
+        return A.ImageCompression(quality_range=(60, 100), p=0.5)
+    return A.ImageCompression(quality_lower=60, quality_upper=100, p=0.5)
 
 
 def get_train_transform(image_size: int = 380) -> A.Compose:
@@ -46,18 +38,23 @@ def get_train_transform(image_size: int = 380) -> A.Compose:
         [
             A.Resize(image_size, image_size),
             A.HorizontalFlip(p=0.5),
+            A.Rotate(limit=10, p=0.5),
             A.Affine(
                 scale=(0.9, 1.1),
-                translate_percent=(-0.05, 0.05),
-                rotate=(-15, 15),
-                shear=(-5, 5),
-                p=0.7,
+                p=0.5,
             ),
-            A.RandomBrightnessContrast(p=0.5),
-            A.HueSaturationValue(p=0.4),
-            A.GaussianBlur(blur_limit=(3, 5), p=0.2),
-            A.GaussNoise(p=0.2),
-            _coarse_dropout(),
+            A.Affine(
+                translate_percent=(-0.05, 0.05),
+                p=0.5,
+            ),
+            A.RandomBrightnessContrast(
+                brightness_limit=0.2,
+                contrast_limit=0.2,
+                p=0.5,
+            ),
+            _gauss_noise(),
+            A.GaussianBlur(blur_limit=(3, 5), p=0.3),
+            _image_compression(),
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ]
