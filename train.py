@@ -60,6 +60,8 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         train_transform=train_transform,
         eval_transform=eval_transform,
         original_upsample_factor=config.get("original_upsample_factor"),
+        train_real_percent=config.get("train_real_percent", 100),
+        seed=int(config.get("seed", 42)),
         mode="train",
     )
     val_dataset = DeepfakeFrameDataset(

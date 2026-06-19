@@ -16,6 +16,7 @@ dropout: 0.4
 pretrained: true
 backbone: "efficientnetb4_es"  # options: efficientnetb4_es, resnet50, swin_tiny
 original_upsample_factor: null
+train_real_percent: 50  # use 0-100% of real images in train_dir/real
 save_dir: "checkpoints"
 gan_save_dir: "checkpoints"
 gan_checkpoint_name: "best_model_with_gan.pth"

@@ -108,10 +108,17 @@ Training uses:
 - `AdamW`
 - `ReduceLROnPlateau(mode="max")` tracking validation accuracy
 - Early stopping tracking validation accuracy
-- Strong augmentation for fake train samples and upsampled real samples
-- Base eval transform only for real train samples that are not upsampled
+- Strong augmentation for all train samples, including real, fake, and upsampled real samples
 
 Set `original_upsample_factor: null` to disable upsampling. Set it to `N` to keep all real samples and add `N` extra augmented copies for each real training image.
+
+Set `train_real_percent` to control how many real images from `train_dir/real` are used during training:
+
+```yaml
+train_real_percent: 50  # use 50% of train/real
+```
+
+This only affects the origin training split. Validation, test, and GAN real data are unchanged.
 
 ## Train With GAN Data
 

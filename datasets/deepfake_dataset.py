@@ -1,6 +1,7 @@
 import inspect
+import random
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import albumentations as A
 import cv2
@@ -82,6 +83,8 @@ class DeepfakeFrameDataset(Dataset):
         train_transform: Optional[A.Compose] = None,
         eval_transform: Optional[A.Compose] = None,
         original_upsample_factor: Optional[Union[int, str]] = 0,
+        train_real_percent: Optional[Union[float, int, str]] = 100,
+        seed: int = 42,
         mode: Optional[str] = None,
     ) -> None:
         self.root_dir = Path(root_dir)
@@ -91,6 +94,8 @@ class DeepfakeFrameDataset(Dataset):
         self.train_transform = train_transform
         self.eval_transform = eval_transform
         self.original_upsample_factor = self._normalize_upsample_factor(original_upsample_factor)
+        self.train_real_percent = self._normalize_percent(train_real_percent)
+        self.seed = int(seed)
 
         self.split_dir = self._resolve_split_dir()
         self.class_to_label = self._get_class_mapping()
@@ -120,12 +125,36 @@ class DeepfakeFrameDataset(Dataset):
             return 0
         return max(0, int(value))
 
+    @staticmethod
+    def _normalize_percent(value: Optional[Union[float, int, str]]) -> float:
+        if value in (None, "", "none", "None", "null"):
+            return 100.0
+        percent = float(value)
+        if not 0.0 <= percent <= 100.0:
+            raise ValueError("train_real_percent must be between 0 and 100.")
+        return percent
+
     def _collect_class_images(self, class_dir: Path) -> List[Path]:
         return sorted(
             path
             for path in class_dir.rglob("*")
             if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
         )
+
+    def _select_train_real_samples(
+        self,
+        class_samples: List[Tuple[Path, float, bool]],
+    ) -> List[Tuple[Path, float, bool]]:
+        if self.mode != "train" or self.train_real_percent >= 100.0:
+            return class_samples
+        if self.train_real_percent <= 0.0:
+            return []
+
+        keep_count = int(len(class_samples) * self.train_real_percent / 100.0)
+        keep_count = max(1, min(len(class_samples), keep_count))
+        shuffled_samples = list(class_samples)
+        random.Random(self.seed).shuffle(shuffled_samples)
+        return sorted(shuffled_samples[:keep_count], key=lambda sample: str(sample[0]))
 
     def _collect_samples(self) -> List[Tuple[Path, float, bool]]:
         samples: List[Tuple[Path, float, bool]] = []
@@ -139,10 +168,11 @@ class DeepfakeFrameDataset(Dataset):
                 continue
 
             class_samples = [(path, float(label), False) for path in self._collect_class_images(class_dir)]
-            samples.extend(class_samples)
-
             if class_name == "real":
+                class_samples = self._select_train_real_samples(class_samples)
                 real_samples = class_samples
+
+            samples.extend(class_samples)
 
         if missing_classes:
             print(f"Warning: missing class folders under {self.split_dir}: {', '.join(missing_classes)}")
@@ -172,11 +202,7 @@ class DeepfakeFrameDataset(Dataset):
 
     def _select_transform(self, label: float, augmented: bool):
         if self.mode == "train":
-            if label == 1.0:
-                return self.train_transform or self.eval_transform
-            if augmented:
-                return self.train_transform or self.eval_transform
-            return self.eval_transform
+            return self.train_transform or self.eval_transform
         return self.eval_transform
 
 
