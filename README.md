@@ -41,20 +41,34 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 ## Data Layout
 
-Origin train, validation, and test data are expected under `data_root`:
+FF++ train, validation, and test data are expected under `data_root`:
 
 ```text
 root/
 |-- train/
-|   |-- real/
-|   `-- fake/
+|   |-- original/
+|   |-- Deepfakes/
+|   |-- Face2Face/
+|   |-- FaceShifter/
+|   |-- FaceSwap/
+|   `-- NeuralTextures/
 |-- val/
-|   |-- real/
-|   `-- fake/
+|   |-- original/
+|   |-- Deepfakes/
+|   |-- Face2Face/
+|   |-- FaceShifter/
+|   |-- FaceSwap/
+|   `-- NeuralTextures/
 `-- test/
-    |-- real/
-    `-- fake/
+    |-- original/
+    |-- Deepfakes/
+    |-- Face2Face/
+    |-- FaceShifter/
+    |-- FaceSwap/
+    `-- NeuralTextures/
 ```
+
+`original` is label `0`. All manipulation folders are label `1`.
 
 The cross-dataset test root is configured with `cross_dataset_root` and should contain:
 
@@ -112,10 +126,10 @@ Training uses:
 
 Set `original_upsample_factor: null` to disable upsampling. Set it to `N` to keep all real samples and add `N` extra augmented copies for each real training image.
 
-Set `train_real_percent` to control how many real images from `train_dir/real` are used during training:
+Set `train_real_percent` to control how many real images from `train_dir/original` are used during training:
 
 ```yaml
-train_real_percent: 50  # use 50% of train/real
+train_real_percent: 50  # use 50% of train/original
 ```
 
 This only affects the origin training split. Validation, test, and GAN real data are unchanged.

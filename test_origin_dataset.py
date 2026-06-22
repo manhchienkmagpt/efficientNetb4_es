@@ -65,7 +65,7 @@ def main():
     dataset = DeepfakeFrameDataset(
         root_dir=config["data_root"],
         split=config["test_dir"],
-        dataset_type="origin",
+        dataset_type="ffpp",
         eval_transform=get_eval_transform(int(config["image_size"])),
         original_upsample_factor=0,
         mode="test",

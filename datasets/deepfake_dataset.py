@@ -13,11 +13,21 @@ from torch.utils.data import Dataset
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 ORIGIN_DATASET_LABELS: Dict[str, int] = {
+    "original": 0,
+    "deepfakes": 1,
+    "face2face": 1,
+    "faceshifter": 1,
+    "faceswap": 1,
+    "neuraltextures": 1,
+}
+
+LEGACY_DATASET_LABELS: Dict[str, int] = {
     "real": 0,
+    "deepfakedetection": 1,
     "fake": 1,
 }
 
-CROSS_DATASET_LABELS: Dict[str, int] = ORIGIN_DATASET_LABELS
+CROSS_DATASET_LABELS: Dict[str, int] = {**ORIGIN_DATASET_LABELS, **LEGACY_DATASET_LABELS}
 
 
 def _gauss_noise():
@@ -73,7 +83,7 @@ def get_eval_transform(image_size: int = 380) -> A.Compose:
 
 
 class DeepfakeFrameDataset(Dataset):
-    """Frame-level dataset for split folders with real/fake class directories."""
+    """Frame-level dataset for FF++ split folders."""
 
     def __init__(
         self,
@@ -114,7 +124,7 @@ class DeepfakeFrameDataset(Dataset):
 
     def _get_class_mapping(self) -> Dict[str, int]:
         if self.dataset_type in {"ffpp", "origin", "original"}:
-            return ORIGIN_DATASET_LABELS
+            return {**ORIGIN_DATASET_LABELS, **LEGACY_DATASET_LABELS}
         if self.dataset_type in {"celebdf", "cross"}:
             return CROSS_DATASET_LABELS
         raise ValueError("dataset_type must be one of: ffpp, origin, original, celebdf, cross")
@@ -158,30 +168,36 @@ class DeepfakeFrameDataset(Dataset):
 
     def _collect_samples(self) -> List[Tuple[Path, float, bool]]:
         samples: List[Tuple[Path, float, bool]] = []
-        real_samples: List[Tuple[Path, float, bool]] = []
-        missing_classes: List[str] = []
+        original_samples: List[Tuple[Path, float, bool]] = []
 
         for class_name, label in self.class_to_label.items():
-            class_dir = self.split_dir / class_name
+            class_dir = self._find_class_dir(class_name)
             if not class_dir.exists():
-                missing_classes.append(class_name)
                 continue
 
             class_samples = [(path, float(label), False) for path in self._collect_class_images(class_dir)]
-            if class_name == "real":
+            if label == 0:
                 class_samples = self._select_train_real_samples(class_samples)
-                real_samples = class_samples
+                original_samples.extend(class_samples)
 
             samples.extend(class_samples)
 
-        if missing_classes:
-            print(f"Warning: missing class folders under {self.split_dir}: {', '.join(missing_classes)}")
-
         if self.mode == "train" and self.original_upsample_factor > 0:
             for _ in range(self.original_upsample_factor):
-                samples.extend((path, label, True) for path, label, _ in real_samples)
+                samples.extend((path, label, True) for path, label, _ in original_samples)
 
         return samples
+
+    def _find_class_dir(self, class_name: str) -> Path:
+        exact_path = self.split_dir / class_name
+        if exact_path.exists():
+            return exact_path
+
+        for child in self.split_dir.iterdir():
+            if child.is_dir() and child.name.lower() == class_name:
+                return child
+
+        return exact_path
 
     def __len__(self) -> int:
         return len(self.samples)

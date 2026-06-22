@@ -1,8 +1,8 @@
-data_root: "D:/chien_duy_thinh_ct7/gan_make_worse/data_training/ffpp_faces_scrfd"
+data_root: "D:/duong_huy_ct7/deepfake-data"
 train_dir: "train"
 val_dir: "val"
 test_dir: "test"
-cross_dataset_root: "F:/DeepFakedata/chien_duy_thinh_output/origin_data/celebdf_faces_scrfd/test"
+cross_dataset_root: "D:/duong_huy_ct7/deepfake-data/celeb-df/test"
 gan_fake_dir: "F:/DeepFakedata/chien_duy_thinh_output/gan_data/generated_fake_2"
 gan_real_dir: "F:/DeepFakedata/chien_duy_thinh_output/gan_data/generated_real"
 
@@ -15,8 +15,8 @@ weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
 backbone: "resnet50"  # options: efficientnetb4_es, resnet50, swin_tiny
-original_upsample_factor: null
-train_real_percent: 50  # use 0-100% of real images in train_dir/real
+original_upsample_factor: 3
+train_real_percent: 50  # use 0-100% of original images in train_dir/original
 save_dir: "checkpoints_resnet50"
 gan_save_dir: "checkpoints_gan_resnet50"
 gan_checkpoint_name: "best_model_with_gan.pth"
