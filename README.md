@@ -1,6 +1,6 @@
 # Deepfake Detection Backbones
 
-PyTorch project for binary deepfake frame detection with a configurable ImageNet backbone, ECA attention, and SCConv. The model outputs one raw logit. Training uses `BCEWithLogitsLoss`; inference converts logits with `torch.sigmoid`.
+PyTorch project for binary deepfake frame detection with configurable ImageNet backbones. EfficientNet-B4 uses ECA attention, SCConv, and adaptive pooling before classification; ResNet-50 and Swin-Tiny use the backbone feature vector followed by a dropout classifier. The model outputs one raw logit. Training uses `BCEWithLogitsLoss`; inference converts logits with `torch.sigmoid`.
 
 Labels:
 

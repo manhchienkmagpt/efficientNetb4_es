@@ -1,5 +1,4 @@
 import timm
-import torch
 from torch import nn
 
 from .modules import ECAAttention, SCConv
@@ -37,7 +36,7 @@ class EfficientNetB4_ES(nn.Module):
 
 
 class TimmBackbone_ES(nn.Module):
-    """Generic timm backbone with ECA attention and SCConv head."""
+    """Generic timm backbone with a dropout classifier head."""
 
     def __init__(
         self,
@@ -54,39 +53,19 @@ class TimmBackbone_ES(nn.Module):
         self.backbone = timm.create_model(
             model_name,
             pretrained=pretrained,
-            features_only=True,
-            out_indices=(-1,),
+            num_classes=0,
             **model_kwargs,
         )
-        self.feature_channels = self.backbone.feature_info.channels()[-1]
+        self.feature_channels = self.backbone.num_features
 
-        self.eca = ECAAttention(self.feature_channels)
-        self.scconv = SCConv(self.feature_channels)
-        self.pool = nn.AdaptiveAvgPool2d(1)
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Dropout(p=dropout),
             nn.Linear(self.feature_channels, 1),
         )
 
-    def _to_nchw(self, features: torch.Tensor) -> torch.Tensor:
-        if features.ndim != 4:
-            raise ValueError(f"Expected 4D feature map, got shape {tuple(features.shape)}")
-        if features.shape[1] == self.feature_channels:
-            return features
-        if features.shape[-1] == self.feature_channels:
-            return features.permute(0, 3, 1, 2).contiguous()
-        raise ValueError(
-            f"Could not infer channel dimension for feature shape {tuple(features.shape)} "
-            f"with {self.feature_channels} channels"
-        )
-
     def forward(self, x):
-        features = self.backbone(x)[-1]
-        features = self._to_nchw(features)
-        features = self.eca(features)
-        features = self.scconv(features)
-        features = self.pool(features)
+        features = self.backbone(x)
         logits = self.classifier(features)
         return logits.squeeze(1)
 
