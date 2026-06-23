@@ -102,7 +102,7 @@ def main():
     print(f"Train samples: {len(train_loader.dataset)}")
     print(f"Val samples: {len(val_loader.dataset)}")
 
-    backbone = str(config.get("backbone", "efficientnetb4_es"))
+    backbone = str(config.get("backbone", "efficientnetb4"))
     print(f"Backbone: {backbone}")
     model = build_model(
         backbone=backbone,

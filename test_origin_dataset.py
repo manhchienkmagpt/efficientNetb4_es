@@ -79,7 +79,7 @@ def main():
     )
 
     model = build_model(
-        backbone=str(config.get("backbone", "efficientnetb4_es")),
+        backbone=str(config.get("backbone", "efficientnetb4")),
         pretrained=False,
         dropout=float(config.get("dropout", 0.4)),
         image_size=int(config["image_size"]),

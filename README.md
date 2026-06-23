@@ -1,6 +1,6 @@
 # Deepfake Detection Backbones
 
-PyTorch project for binary deepfake frame detection with configurable ImageNet backbones. EfficientNet-B4 uses ECA attention, SCConv, and adaptive pooling before classification; ResNet-50 and Swin-Tiny use the backbone feature vector followed by a dropout classifier. The model outputs one raw logit. Training uses `BCEWithLogitsLoss`; inference converts logits with `torch.sigmoid`.
+PyTorch project for binary deepfake frame detection with configurable ImageNet backbones. EfficientNet-B4, ResNet-50, Swin-Tiny, and Swin-Small use the backbone feature vector followed by a dropout classifier. The model outputs one raw logit. Training uses `BCEWithLogitsLoss`; inference converts logits with `torch.sigmoid`.
 
 Labels:
 
@@ -10,11 +10,10 @@ Labels:
 ## Project Structure
 
 ```text
-deepfake_efficientnetb4_es/
+deepfake_efficientnetb4/
 |-- configs/config.yaml
 |-- datasets/deepfake_dataset.py
-|-- models/efficientnetb4_es.py
-|-- models/modules.py
+|-- models/backbones.py
 |-- utils/
 |-- train.py
 |-- train_with_gan.py
@@ -27,7 +26,7 @@ deepfake_efficientnetb4_es/
 ## Install
 
 ```bash
-cd deepfake_efficientnetb4_es
+cd deepfake_efficientnetb4
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -99,8 +98,15 @@ python train.py --config configs/config.yaml
 Choose a backbone in `configs/config.yaml`:
 
 ```yaml
-backbone: "efficientnetb4_es"  # options: efficientnetb4_es, resnet50, swin_tiny
+backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small
 ```
+
+Available values:
+
+- `efficientnetb4`: EfficientNet-B4
+- `resnet50`: ResNet-50
+- `swin_tiny`: Swin Transformer Tiny
+- `swin_small`: Swin Transformer Small
 
 Resume from a checkpoint:
 
