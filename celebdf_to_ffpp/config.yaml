@@ -1,0 +1,28 @@
+celebdf_root: "/path/to/celebdf"
+celebdf_train_dir: "train"
+celebdf_val_dir: "val"
+celebdf_test_dir: "test"
+
+ffpp_root: "/path/to/ffpp"
+ffpp_test_dir: "test"
+
+image_size: 224
+batch_size: 16
+num_workers: 4
+epochs: 30
+lr: 1e-4
+weight_decay: 1e-4
+dropout: 0.4
+pretrained: true
+backbone: "efficientnetb4"
+save_dir: "checkpoints_celebdf_to_ffpp"
+checkpoint_name: "best_celebdf_to_ffpp.pth"
+resume_from: null
+seed: 42
+threshold: 0.5
+device: "cuda"
+
+early_stopping_patience: 5
+lr_scheduler_patience: 2
+lr_scheduler_factor: 0.5
+min_lr: 1e-7
