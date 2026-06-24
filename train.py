@@ -135,7 +135,8 @@ def main():
     device = resolve_device(str(config.get("device", "cuda")))
     threshold = float(config.get("threshold", 0.5))
     save_dir = Path(config.get("save_dir", "checkpoints"))
-    checkpoint_path = save_dir / "best_model.pth"
+    checkpoint_name = str(config.get("checkpoint_name", "best_model.pth"))
+    checkpoint_path = save_dir / checkpoint_name
 
     train_loader, val_loader = build_loaders(config)
     print(f"Train samples: {len(train_loader.dataset)}")

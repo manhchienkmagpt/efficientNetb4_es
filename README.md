@@ -119,7 +119,14 @@ Or set `resume_from` in `configs/config.yaml`.
 The best checkpoint is saved by validation accuracy to:
 
 ```text
-checkpoints/best_model.pth
+save_dir/checkpoint_name
+```
+
+Configure the normal training checkpoint path with:
+
+```yaml
+save_dir: "checkpoints_efficientnetb4"
+checkpoint_name: "best_model.pth"
 ```
 
 Training uses:

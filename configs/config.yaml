@@ -16,10 +16,11 @@ dropout: 0.4
 pretrained: true
 backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small
 original_upsample_factor: 3
-train_real_percent: 50  # use 0-100% of original images in train_dir/original
+train_real_percent: 100  # use 0-100% of original images in train_dir/original
 save_dir: "checkpoints_efficientnetb4"
-gan_save_dir: "checkpoints_gan_efficientnetb4"
-gan_checkpoint_name: "best_model_with_gan.pth"
+checkpoint_name: "best_efficientnetb4.pth"
+gan_save_dir: "checkpoints_efficientnetb4"
+gan_checkpoint_name: "best_efficientnetb4_gan.pth"
 resume_from: null
 seed: 42
 threshold: 0.5
