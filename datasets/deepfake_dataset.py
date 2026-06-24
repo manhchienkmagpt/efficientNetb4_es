@@ -16,6 +16,7 @@ ORIGIN_DATASET_LABELS: Dict[str, int] = {
     "original": 0,
     "deepfakes": 1,
     "face2face": 1,
+    "faceshifter": 1,
     "faceswap": 1,
     "neuraltextures": 1,
 }
