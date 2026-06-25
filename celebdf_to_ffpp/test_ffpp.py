@@ -1,11 +1,8 @@
 import argparse
 from pathlib import Path
-from typing import Dict, Tuple
 
 import pandas as pd
-import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from common import DEFAULT_CONFIG_PATH
 from ffpp_dataset import FFPPTestDataset
@@ -14,6 +11,7 @@ from datasets import get_eval_transform
 from models import build_model
 from train import load_config, resolve_device
 from utils.checkpoint import load_checkpoint
+from utils.inference import predict
 from utils.metrics import binary_confusion_matrix, compute_binary_metrics, format_metrics
 
 
@@ -23,25 +21,6 @@ def parse_args():
     parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path")
     parser.add_argument("--output-csv", type=str, default="outputs/ffpp_predictions.csv", help="CSV output path")
     return parser.parse_args()
-
-
-def predict(model, loader, device) -> Tuple[list, list, list]:
-    model.eval()
-    image_paths = []
-    labels_all = []
-    probs_all = []
-
-    with torch.no_grad():
-        for images, labels, paths in tqdm(loader, desc="Test FF++"):
-            images = images.to(device, non_blocking=True)
-            logits = model(images)
-            probs = torch.sigmoid(logits)
-
-            image_paths.extend(paths)
-            labels_all.extend(labels.numpy().tolist())
-            probs_all.extend(probs.cpu().numpy().tolist())
-
-    return image_paths, labels_all, probs_all
 
 
 def main():
@@ -74,10 +53,13 @@ def main():
         Path(config.get("save_dir", "checkpoints_celebdf_to_ffpp"))
         / str(config.get("checkpoint_name", "best_celebdf_to_ffpp.pth"))
     )
+    _cp = Path(checkpoint_path)
+    if not _cp.is_absolute():
+        checkpoint_path = str(Path(__file__).resolve().parent / _cp)
     checkpoint = load_checkpoint(checkpoint_path, device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    image_paths, labels, probs = predict(model, loader, device)
+    image_paths, labels, probs = predict(model, loader, device, desc="Test FF++")
     metrics = compute_binary_metrics(labels, probs, threshold=threshold)
     cm = binary_confusion_matrix(labels, probs, threshold=threshold)
     preds = [int(prob >= threshold) for prob in probs]

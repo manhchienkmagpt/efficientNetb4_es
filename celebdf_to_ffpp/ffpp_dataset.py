@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -5,16 +6,19 @@ import cv2
 import torch
 from torch.utils.data import Dataset
 
+from datasets import collect_class_images, find_class_dir
 from datasets.deepfake_dataset import IMAGE_EXTENSIONS
 
 
 FFPP_TEST_LABELS: Dict[str, int] = {
     "original": 0,
+    "real": 0,
     "deepfakes": 1,
     "face2face": 1,
     "faceshifter": 1,
     "faceswap": 1,
     "neuraltextures": 1,
+    "fake": 1,
 }
 
 
@@ -37,31 +41,23 @@ class FFPPTestDataset(Dataset):
             raise NotADirectoryError(f"FF++ split path is not a directory: {split_dir}")
         return split_dir
 
-    def _find_class_dir(self, class_name: str) -> Path:
-        exact_path = self.split_dir / class_name
-        if exact_path.exists():
-            return exact_path
-
-        for child in self.split_dir.iterdir():
-            if child.is_dir() and child.name.lower() == class_name:
-                return child
-
-        return exact_path
-
-    def _collect_class_images(self, class_dir: Path) -> List[Path]:
-        return sorted(
-            path
-            for path in class_dir.rglob("*")
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-        )
-
     def _collect_samples(self) -> List[Tuple[Path, float]]:
         samples: List[Tuple[Path, float]] = []
         for class_name, label in FFPP_TEST_LABELS.items():
-            class_dir = self._find_class_dir(class_name)
+            class_dir = find_class_dir(self.split_dir, class_name)
             if not class_dir.exists():
                 continue
-            samples.extend((path, float(label)) for path in self._collect_class_images(class_dir))
+            samples.extend((path, float(label)) for path in collect_class_images(class_dir))
+
+        real_count = sum(1 for _, label in samples if label == 0.0)
+        if real_count == 0:
+            warnings.warn(
+                f"FFPPTestDataset: no real (label=0) samples found in {self.split_dir}. "
+                "Check that an 'original' or 'real' directory exists. Metrics will be meaningless.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         return samples
 
     def __len__(self) -> int:

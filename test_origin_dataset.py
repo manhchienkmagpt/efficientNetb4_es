@@ -1,16 +1,14 @@
 import argparse
 from pathlib import Path
-from typing import Dict, Tuple
 
 import pandas as pd
-import torch
-import yaml
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from datasets import DeepfakeFrameDataset, get_eval_transform
 from models import build_model
+from train import load_config, resolve_device
 from utils.checkpoint import load_checkpoint
+from utils.inference import predict, predict_tta
 from utils.metrics import binary_confusion_matrix, compute_binary_metrics, format_metrics
 
 
@@ -19,41 +17,8 @@ def parse_args():
     parser.add_argument("--config", type=str, default="configs/config.yaml", help="Path to config YAML")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/best_model.pth", help="Checkpoint path")
     parser.add_argument("--output-csv", type=str, default="origin_dataset_predictions.csv", help="CSV output path")
+    parser.add_argument("--tta", action="store_true", help="Enable test-time augmentation (hflip + rotate ±5°)")
     return parser.parse_args()
-
-
-def load_config(config_path: str) -> Dict:
-    path = Path(config_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Config file does not exist: {path}")
-    with path.open("r", encoding="utf-8") as file:
-        return yaml.safe_load(file)
-
-
-def resolve_device(config_device: str) -> torch.device:
-    if config_device == "cuda" and not torch.cuda.is_available():
-        print("CUDA is not available. Falling back to CPU.")
-        return torch.device("cpu")
-    return torch.device(config_device)
-
-
-def predict(model, loader, device) -> Tuple[list, list, list]:
-    model.eval()
-    image_paths = []
-    labels_all = []
-    probs_all = []
-
-    with torch.no_grad():
-        for images, labels, paths in tqdm(loader, desc="Test origin dataset"):
-            images = images.to(device, non_blocking=True)
-            logits = model(images)
-            probs = torch.sigmoid(logits)
-
-            image_paths.extend(paths)
-            labels_all.extend(labels.numpy().tolist())
-            probs_all.extend(probs.cpu().numpy().tolist())
-
-    return image_paths, labels_all, probs_all
 
 
 def main():
@@ -87,7 +52,8 @@ def main():
     checkpoint = load_checkpoint(args.checkpoint, device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    image_paths, labels, probs = predict(model, loader, device)
+    run_predict = predict_tta if args.tta else predict
+    image_paths, labels, probs = run_predict(model, loader, device, desc="Test origin dataset")
     metrics = compute_binary_metrics(labels, probs, threshold=threshold)
     cm = binary_confusion_matrix(labels, probs, threshold=threshold)
     preds = [int(prob >= threshold) for prob in probs]

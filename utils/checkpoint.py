@@ -13,6 +13,7 @@ def save_checkpoint(
     config: Dict[str, Any],
     best_accuracy: Optional[float] = None,
     scheduler=None,
+    epochs_without_improvement: int = 0,
 ) -> None:
     path = Path(save_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -22,6 +23,7 @@ def save_checkpoint(
         "optimizer_state_dict": optimizer.state_dict(),
         "best_auc": best_auc,
         "config": config,
+        "epochs_without_improvement": int(epochs_without_improvement),
     }
     if best_accuracy is not None:
         checkpoint["best_accuracy"] = best_accuracy
@@ -34,4 +36,4 @@ def load_checkpoint(checkpoint_path: str, device):
     path = Path(checkpoint_path)
     if not path.exists():
         raise FileNotFoundError(f"Checkpoint does not exist: {path}")
-    return torch.load(path, map_location=device)
+    return torch.load(path, map_location=device, weights_only=False)

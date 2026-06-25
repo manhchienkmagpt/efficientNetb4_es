@@ -12,6 +12,25 @@ from torch.utils.data import Dataset
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
+
+def collect_class_images(class_dir: Path) -> List[Path]:
+    return sorted(
+        path
+        for path in class_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    )
+
+
+def find_class_dir(split_dir: Path, class_name: str) -> Path:
+    exact = split_dir / class_name
+    if exact.exists():
+        return exact
+    for child in split_dir.iterdir():
+        if child.is_dir() and child.name.lower() == class_name:
+            return child
+    return exact
+
+
 ORIGIN_DATASET_LABELS: Dict[str, int] = {
     "original": 0,
     "deepfakes": 1,
@@ -39,8 +58,8 @@ def _gauss_noise():
 def _image_compression():
     signature = inspect.signature(A.ImageCompression)
     if "quality_range" in signature.parameters:
-        return A.ImageCompression(quality_range=(60, 100), p=0.5)
-    return A.ImageCompression(quality_lower=60, quality_upper=100, p=0.5)
+        return A.ImageCompression(quality_range=(30, 90), p=0.5)
+    return A.ImageCompression(quality_lower=30, quality_upper=90, p=0.5)
 
 
 def get_train_transform(image_size: int = 380) -> A.Compose:
@@ -62,6 +81,19 @@ def get_train_transform(image_size: int = 380) -> A.Compose:
                 contrast_limit=0.2,
                 p=0.5,
             ),
+            A.HueSaturationValue(
+                hue_shift_limit=15,
+                sat_shift_limit=25,
+                val_shift_limit=15,
+                p=0.4,
+            ),
+            A.RGBShift(
+                r_shift_limit=15,
+                g_shift_limit=15,
+                b_shift_limit=15,
+                p=0.3,
+            ),
+            A.RandomGamma(gamma_limit=(80, 120), p=0.3),
             _gauss_noise(),
             A.GaussianBlur(blur_limit=(3, 5), p=0.3),
             _image_compression(),
@@ -144,11 +176,7 @@ class DeepfakeFrameDataset(Dataset):
         return percent
 
     def _collect_class_images(self, class_dir: Path) -> List[Path]:
-        return sorted(
-            path
-            for path in class_dir.rglob("*")
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-        )
+        return collect_class_images(class_dir)
 
     def _select_train_real_samples(
         self,
@@ -188,15 +216,7 @@ class DeepfakeFrameDataset(Dataset):
         return samples
 
     def _find_class_dir(self, class_name: str) -> Path:
-        exact_path = self.split_dir / class_name
-        if exact_path.exists():
-            return exact_path
-
-        for child in self.split_dir.iterdir():
-            if child.is_dir() and child.name.lower() == class_name:
-                return child
-
-        return exact_path
+        return find_class_dir(self.split_dir, class_name)
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -273,11 +293,7 @@ class GANFrameDataset(Dataset):
         return [(self._resolve_image_dir(self.root_dir, "GAN dataset"), self.label)]
 
     def _collect_class_images(self, class_dir: Path) -> List[Path]:
-        return sorted(
-            path
-            for path in class_dir.rglob("*")
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-        )
+        return collect_class_images(class_dir)
 
     def _collect_samples(self) -> List[Tuple[Path, float]]:
         samples: List[Tuple[Path, float]] = []

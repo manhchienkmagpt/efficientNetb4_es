@@ -1,14 +1,14 @@
 import argparse
 import math
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import yaml
 from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
 
 from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
@@ -46,6 +46,30 @@ def current_lrs(optimizer) -> list:
 
 def lr_reduced(before: list, after: list) -> bool:
     return any(new_lr < old_lr for old_lr, new_lr in zip(before, after))
+
+
+def _count_labels(dataset) -> Tuple[int, int]:
+    """Return (num_real, num_fake) by inspecting .samples on leaf datasets."""
+    if isinstance(dataset, ConcatDataset):
+        total_real, total_fake = 0, 0
+        for sub in dataset.datasets:
+            r, f = _count_labels(sub)
+            total_real += r
+            total_fake += f
+        return total_real, total_fake
+    if hasattr(dataset, "samples"):
+        labels = [s[1] for s in dataset.samples]
+        return sum(1 for l in labels if l == 0.0), sum(1 for l in labels if l == 1.0)
+    return 0, 0
+
+
+def _pos_weight(dataset, device: torch.device) -> Optional[torch.Tensor]:
+    num_real, num_fake = _count_labels(dataset)
+    if num_fake == 0:
+        return None
+    pw = num_real / num_fake
+    print(f"Class distribution — real: {num_real}, fake: {num_fake}, pos_weight: {pw:.4f}")
+    return torch.tensor([pw], device=device)
 
 
 def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
@@ -93,7 +117,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     return train_loader, val_loader
 
 
-def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: float = 0.5):
+def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: float = 0.5, label_smoothing: float = 0.0):
     is_train = optimizer is not None
     model.train(is_train)
     total_loss = 0.0
@@ -110,7 +134,8 @@ def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: f
 
         with torch.set_grad_enabled(is_train):
             logits = model(images)
-            loss = criterion(logits, labels)
+            smooth_labels = labels * (1.0 - label_smoothing) + label_smoothing * 0.5 if is_train and label_smoothing > 0.0 else labels
+            loss = criterion(logits, smooth_labels)
             if is_train:
                 loss.backward()
                 optimizer.step()
@@ -127,21 +152,15 @@ def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: f
     return compute_binary_metrics(labels_all, probs_all, threshold=threshold, loss=avg_loss)
 
 
-def main():
-    args = parse_args()
-    config = load_config(args.config)
-    set_seed(int(config.get("seed", 42)))
-
-    device = resolve_device(str(config.get("device", "cuda")))
+def run_training_loop(
+    config: Dict,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    checkpoint_path: Path,
+    device: torch.device,
+    resume_path: Optional[str] = None,
+) -> None:
     threshold = float(config.get("threshold", 0.5))
-    save_dir = Path(config.get("save_dir", "checkpoints"))
-    checkpoint_name = str(config.get("checkpoint_name", "best_model.pth"))
-    checkpoint_path = save_dir / checkpoint_name
-
-    train_loader, val_loader = build_loaders(config)
-    print(f"Train samples: {len(train_loader.dataset)}")
-    print(f"Val samples: {len(val_loader.dataset)}")
-
     backbone = str(config.get("backbone", "efficientnetb4"))
     print(f"Backbone: {backbone}")
     model = build_model(
@@ -151,7 +170,9 @@ def main():
         image_size=int(config["image_size"]),
     ).to(device)
 
-    criterion = nn.BCEWithLogitsLoss()
+    label_smoothing = float(config.get("label_smoothing", 0.0))
+    pw = _pos_weight(train_loader.dataset, device) if config.get("use_pos_weight", False) else None
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
     optimizer = AdamW(
         model.parameters(),
         lr=float(config.get("lr", 1e-4)),
@@ -175,7 +196,6 @@ def main():
     total_epochs = int(config.get("epochs", 30))
     start_epoch = 1
 
-    resume_path = args.resume if args.resume is not None else config.get("resume_from")
     if resume_path:
         checkpoint = load_checkpoint(str(resume_path), device)
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -186,6 +206,9 @@ def main():
 
         best_auc = float(checkpoint.get("best_auc", best_auc))
         best_accuracy = float(checkpoint.get("best_accuracy", best_accuracy))
+        epochs_without_accuracy_improvement = int(
+            checkpoint.get("epochs_without_improvement", 0)
+        )
         checkpoint_epoch = int(checkpoint.get("epoch", 0))
         start_epoch = checkpoint_epoch + 1
         print(f"Resumed from checkpoint: {resume_path} (epoch {checkpoint_epoch})")
@@ -206,6 +229,7 @@ def main():
             device=device,
             optimizer=optimizer,
             threshold=threshold,
+            label_smoothing=label_smoothing,
         )
         val_metrics = run_one_epoch(
             model=model,
@@ -222,11 +246,10 @@ def main():
         accuracy_improved = math.isfinite(val_accuracy) and val_accuracy > best_accuracy
         checkpoint_saved = False
 
-        if auc_improved:
-            best_auc = val_auc
-
         if accuracy_improved:
             best_accuracy = val_accuracy
+            if auc_improved:
+                best_auc = val_auc
             epochs_without_accuracy_improvement = 0
             save_checkpoint(
                 save_path=str(checkpoint_path),
@@ -237,6 +260,7 @@ def main():
                 best_accuracy=best_accuracy,
                 scheduler=scheduler,
                 config=config,
+                epochs_without_improvement=epochs_without_accuracy_improvement,
             )
             checkpoint_saved = True
         else:
@@ -268,6 +292,29 @@ def main():
             break
 
     print(f"\nTraining finished. Best checkpoint: {checkpoint_path}")
+
+
+def main():
+    args = parse_args()
+    config = load_config(args.config)
+    set_seed(int(config.get("seed", 42)))
+
+    device = resolve_device(str(config.get("device", "cuda")))
+    save_dir = Path(config.get("save_dir", "checkpoints"))
+    checkpoint_path = save_dir / str(config.get("checkpoint_name", "best_model.pth"))
+
+    train_loader, val_loader = build_loaders(config)
+    print(f"Train samples: {len(train_loader.dataset)}")
+    print(f"Val samples: {len(val_loader.dataset)}")
+
+    run_training_loop(
+        config=config,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        checkpoint_path=checkpoint_path,
+        device=device,
+        resume_path=args.resume or config.get("resume_from"),
+    )
 
 
 if __name__ == "__main__":
