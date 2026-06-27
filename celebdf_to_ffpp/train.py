@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from common import DEFAULT_CONFIG_PATH
 
 from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
-from train import load_config, resolve_device, run_training_loop
+from train import _count_labels, load_config, resolve_device, run_training_loop
 from utils.seed import set_seed
 
 
@@ -71,8 +71,10 @@ def main():
     checkpoint_path = save_dir / str(config.get("checkpoint_name", "best_celebdf_to_ffpp.pth"))
 
     train_loader, val_loader = build_loaders(config)
-    print(f"CelebDF train samples: {len(train_loader.dataset)}")
-    print(f"CelebDF val samples: {len(val_loader.dataset)}")
+    train_real_count, train_fake_count = _count_labels(train_loader.dataset)
+    print(f"Train samples: {len(train_loader.dataset)}")
+    print(f"Train class distribution — real: {train_real_count}, fake: {train_fake_count}")
+    print(f"Val samples: {len(val_loader.dataset)}")
 
     run_training_loop(
         config=config,

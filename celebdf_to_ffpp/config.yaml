@@ -1,9 +1,9 @@
-celebdf_root: "/path/to/celebdf"
+celebdf_root: "D:/chien_duy_thinh_ct7/gan_make_worse/data_training/celebdf_faces_scrfd"
 celebdf_train_dir: "train"
 celebdf_val_dir: "val"
 celebdf_test_dir: "test"
 
-ffpp_root: "/path/to/ffpp"
+ffpp_root: "D:/chien_duy_thinh_ct7/gan_make_worse/data_training/ffpp_faces_scrfd"
 ffpp_test_dir: "test"
 gan_fake_dir: null
 gan_real_dir: null
@@ -17,8 +17,8 @@ weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
 backbone: "efficientnetb4"
-save_dir: "checkpoints_celebdf_to_ffpp"
-checkpoint_name: "best_celebdf_to_ffpp.pth"
+save_dir: "checkpoints_celebdf_to_ffpp_efficientnetb4"
+checkpoint_name: "best_celebdf_to_ffpp.pth_efficientnetb4"
 gan_save_dir: "checkpoints_celebdf_to_ffpp_with_gan"
 gan_checkpoint_name: "best_celebdf_to_ffpp_with_gan.pth"
 resume_from: null

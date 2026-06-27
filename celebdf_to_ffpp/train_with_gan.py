@@ -13,7 +13,7 @@ from common import DEFAULT_CONFIG_PATH
 
 from datasets import DeepfakeFrameDataset, GANFrameDataset, get_eval_transform, get_train_transform
 from models import build_model
-from train import current_lrs, load_config, lr_reduced, resolve_device, run_one_epoch
+from train import _count_labels, current_lrs, load_config, lr_reduced, resolve_device, run_one_epoch
 from utils.checkpoint import load_checkpoint, save_checkpoint
 from utils.metrics import format_metrics
 from utils.seed import set_seed
@@ -99,8 +99,10 @@ def main():
     checkpoint_path = save_dir / checkpoint_name
 
     train_loader, val_loader = build_loaders(config)
-    print(f"CelebDF train samples: {len(train_loader.dataset)}")
-    print(f"CelebDF val samples: {len(val_loader.dataset)}")
+    train_real_count, train_fake_count = _count_labels(train_loader.dataset)
+    print(f"Train samples: {len(train_loader.dataset)}")
+    print(f"Train class distribution — real: {train_real_count}, fake: {train_fake_count}")
+    print(f"Val samples: {len(val_loader.dataset)}")
 
     backbone = str(config.get("backbone", "efficientnetb4"))
     print(f"Backbone: {backbone}")
