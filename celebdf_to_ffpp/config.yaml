@@ -5,6 +5,8 @@ celebdf_test_dir: "test"
 
 ffpp_root: "/path/to/ffpp"
 ffpp_test_dir: "test"
+gan_fake_dir: null
+gan_real_dir: null
 
 image_size: 224
 batch_size: 16
@@ -17,6 +19,8 @@ pretrained: true
 backbone: "efficientnetb4"
 save_dir: "checkpoints_celebdf_to_ffpp"
 checkpoint_name: "best_celebdf_to_ffpp.pth"
+gan_save_dir: "checkpoints_celebdf_to_ffpp_with_gan"
+gan_checkpoint_name: "best_celebdf_to_ffpp_with_gan.pth"
 resume_from: null
 seed: 42
 threshold: 0.5

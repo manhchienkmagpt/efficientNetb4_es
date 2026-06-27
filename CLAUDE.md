@@ -32,8 +32,9 @@ python test_cross_dataset.py --config configs/config.yaml --checkpoint checkpoin
 
 **CelebDF → FF++ transfer workflow:**
 ```bash
-python celebdf_to_ffpp/train_celebdf.py --config celebdf_to_ffpp/config.yaml
-python celebdf_to_ffpp/test_ffpp.py --config celebdf_to_ffpp/config.yaml
+python celebdf_to_ffpp/train.py --config celebdf_to_ffpp/config.yaml
+python celebdf_to_ffpp/test_origin_dataset.py --config celebdf_to_ffpp/config.yaml --checkpoint checkpoints_celebdf_to_ffpp/best_celebdf_to_ffpp.pth
+python celebdf_to_ffpp/test_cross_dataset.py --config celebdf_to_ffpp/config.yaml --checkpoint checkpoints_celebdf_to_ffpp/best_celebdf_to_ffpp.pth
 ```
 
 ## Architecture

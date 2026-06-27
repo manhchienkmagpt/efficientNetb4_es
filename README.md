@@ -12,6 +12,13 @@ Labels:
 ```text
 deepfake_efficientnetb4/
 |-- configs/config.yaml
+|-- celebdf_to_ffpp/
+|   |-- config.yaml
+|   |-- train.py
+|   |-- train_with_gan.py
+|   |-- test_origin_dataset.py
+|   |-- test_cross_dataset.py
+|   `-- ffpp_dataset.py
 |-- datasets/deepfake_dataset.py
 |-- models/backbones.py
 |-- utils/
@@ -197,3 +204,98 @@ Both test scripts print Accuracy, F1, Precision, Recall, AUC, and the confusion 
 - `label`
 - `probability`
 - `prediction`
+
+## CelebDF to FF++ Workflow
+
+The `celebdf_to_ffpp/` folder keeps a separate workflow for training on CelebDF and evaluating on FF++ without changing the existing FF++ scripts in the repository root.
+
+### Workflow Files
+
+- `celebdf_to_ffpp/train.py`: train on CelebDF `train/` and validate on CelebDF `val/`
+- `celebdf_to_ffpp/train_with_gan.py`: train on CelebDF `train/` plus GAN data and validate on CelebDF `val/`
+- `celebdf_to_ffpp/test_origin_dataset.py`: evaluate a checkpoint on CelebDF `test/`
+- `celebdf_to_ffpp/test_cross_dataset.py`: evaluate a checkpoint on FF++ `test/`
+- `celebdf_to_ffpp/ffpp_dataset.py`: FF++ test-only dataset loader for this workflow
+- `celebdf_to_ffpp/config.yaml`: workflow-specific paths and runtime settings
+
+### CelebDF/FF++ Layout
+
+CelebDF root:
+
+```text
+celebdf_root/
+|-- train/
+|   |-- real/
+|   `-- fake/
+|-- val/
+|   |-- real/
+|   `-- fake/
+`-- test/
+    |-- real/
+    `-- fake/
+```
+
+FF++ root:
+
+```text
+ffpp_root/
+`-- test/
+    |-- original/
+    |-- Deepfakes/
+    |-- Face2Face/
+    |-- FaceShifter/
+    |-- FaceSwap/
+    `-- NeuralTextures/
+```
+
+### CelebDF/FF++ Commands
+
+Train on CelebDF:
+
+```bash
+python celebdf_to_ffpp/train.py --config celebdf_to_ffpp/config.yaml
+```
+
+Resume CelebDF training:
+
+```bash
+python celebdf_to_ffpp/train.py --config celebdf_to_ffpp/config.yaml --resume checkpoints_celebdf_to_ffpp/best_celebdf_to_ffpp.pth
+```
+
+Train on CelebDF plus GAN data:
+
+```bash
+python celebdf_to_ffpp/train_with_gan.py --config celebdf_to_ffpp/config.yaml
+```
+
+Resume CelebDF plus GAN training:
+
+```bash
+python celebdf_to_ffpp/train_with_gan.py --config celebdf_to_ffpp/config.yaml --resume checkpoints_celebdf_to_ffpp/best_celebdf_to_ffpp_with_gan.pth
+```
+
+Test the saved checkpoint on CelebDF test:
+
+```bash
+python celebdf_to_ffpp/test_origin_dataset.py --config celebdf_to_ffpp/config.yaml --checkpoint checkpoints_celebdf_to_ffpp/best_celebdf_to_ffpp.pth
+```
+
+Test the saved checkpoint on FF++:
+
+```bash
+python celebdf_to_ffpp/test_cross_dataset.py --config celebdf_to_ffpp/config.yaml --checkpoint checkpoints_celebdf_to_ffpp/best_celebdf_to_ffpp.pth
+```
+
+Override the prediction CSV path if needed:
+
+```bash
+python celebdf_to_ffpp/test_cross_dataset.py --config celebdf_to_ffpp/config.yaml --checkpoint checkpoints_celebdf_to_ffpp/best_celebdf_to_ffpp.pth --output-csv outputs/custom_ffpp_predictions.csv
+```
+
+### CelebDF/FF++ Notes
+
+- `celebdf_to_ffpp/test_origin_dataset.py` and `celebdf_to_ffpp/test_cross_dataset.py` require `--checkpoint`.
+- Both test scripts write prediction CSVs under `celebdf_to_ffpp/outputs/` by default and support `--output-csv`.
+- `celebdf_to_ffpp/train.py` saves to `save_dir/checkpoint_name` from `celebdf_to_ffpp/config.yaml`.
+- `celebdf_to_ffpp/train_with_gan.py` saves to `gan_save_dir/gan_checkpoint_name` when set, otherwise it falls back to `save_dir`.
+- Set `gan_fake_dir` and `gan_real_dir` in `celebdf_to_ffpp/config.yaml` before running `celebdf_to_ffpp/train_with_gan.py`.
