@@ -75,7 +75,7 @@ class MAGNet(nn.Module):
     def __init__(
         self,
         local_backbone: str = "efficientnet_b4",
-        global_backbone: str = "swin_tiny_patch4_window7_224",
+        global_backbone: str = "swin_small_patch4_window7_224",
         pretrained: bool = True,
         embed_dim: int = 512,
         num_heads: int = 8,
