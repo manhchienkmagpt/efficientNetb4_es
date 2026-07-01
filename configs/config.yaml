@@ -23,7 +23,7 @@ model_kwargs:
   num_heads: 4
   use_aux_heads: true
 aux_loss_weight: 0.3
-original_upsample_factor: 3
+original_upsample_factor: null
 train_real_percent: 100  # use 0-100% of original images in train_dir/original
 save_dir: "checkpoints_esanetv2"
 checkpoint_name: "best_esanetv2.pth"

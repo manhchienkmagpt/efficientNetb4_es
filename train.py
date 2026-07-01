@@ -242,7 +242,7 @@ def run_training_loop(
 
     best_auc = -math.inf
     best_accuracy = -math.inf
-    epochs_without_accuracy_improvement = 0
+    epochs_without_auc_improvement = 0
     early_stopping_patience = int(config.get("early_stopping_patience", 5))
     total_epochs = int(config.get("epochs", 30))
     start_epoch = 1
@@ -257,7 +257,7 @@ def run_training_loop(
 
         best_auc = float(checkpoint.get("best_auc", best_auc))
         best_accuracy = float(checkpoint.get("best_accuracy", best_accuracy))
-        epochs_without_accuracy_improvement = int(
+        epochs_without_auc_improvement = int(
             checkpoint.get("epochs_without_improvement", 0)
         )
         checkpoint_epoch = int(checkpoint.get("epoch", 0))
@@ -303,9 +303,10 @@ def run_training_loop(
 
         if accuracy_improved:
             best_accuracy = val_accuracy
-            if auc_improved:
-                best_auc = val_auc
-            epochs_without_accuracy_improvement = 0
+
+        if auc_improved:
+            best_auc = val_auc
+            epochs_without_auc_improvement = 0
             save_checkpoint(
                 save_path=str(checkpoint_path),
                 epoch=epoch,
@@ -315,14 +316,14 @@ def run_training_loop(
                 best_accuracy=best_accuracy,
                 scheduler=scheduler,
                 config=config,
-                epochs_without_improvement=epochs_without_accuracy_improvement,
+                epochs_without_improvement=epochs_without_auc_improvement,
             )
             checkpoint_saved = True
         else:
-            epochs_without_accuracy_improvement += 1
+            epochs_without_auc_improvement += 1
 
         lrs_before = current_lrs(optimizer)
-        scheduler_metric = val_accuracy if math.isfinite(val_accuracy) else -math.inf
+        scheduler_metric = val_auc if math.isfinite(val_auc) else -math.inf
         scheduler.step(scheduler_metric)
         lrs_after = current_lrs(optimizer)
         was_lr_reduced = lr_reduced(lrs_before, lrs_after)
@@ -331,18 +332,23 @@ def run_training_loop(
         print(f"Val   | {format_metrics(val_metrics)}")
         print(f"Current LR: {', '.join(f'{lr:.8g}' for lr in lrs_after)}")
         print(
+            f"Best validation AUC: {best_auc:.4f}"
+            if math.isfinite(best_auc)
+            else "Best validation AUC: n/a"
+        )
+        print(
             f"Best validation accuracy: {best_accuracy:.4f}"
             if math.isfinite(best_accuracy)
             else "Best validation accuracy: n/a"
         )
-        print(f"Epochs without accuracy improvement: {epochs_without_accuracy_improvement}")
+        print(f"Epochs without AUC improvement: {epochs_without_auc_improvement}")
         print(f"Checkpoint saved: {'yes' if checkpoint_saved else 'no'}")
         print(f"LR reduced: {'yes' if was_lr_reduced else 'no'}")
 
-        if epochs_without_accuracy_improvement >= early_stopping_patience:
+        if epochs_without_auc_improvement >= early_stopping_patience:
             print(
-                f"Early stopping triggered after {epochs_without_accuracy_improvement} epochs "
-                "without validation accuracy improvement."
+                f"Early stopping triggered after {epochs_without_auc_improvement} epochs "
+                "without validation AUC improvement."
             )
             break
 
