@@ -133,7 +133,7 @@ def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: f
             optimizer.zero_grad(set_to_none=True)
 
         with torch.set_grad_enabled(is_train):
-            logits = model(images)
+            logits = model(images).view_as(labels)
             smooth_labels = labels * (1.0 - label_smoothing) + label_smoothing * 0.5 if is_train and label_smoothing > 0.0 else labels
             loss = criterion(logits, smooth_labels)
             if is_train:
@@ -142,7 +142,7 @@ def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: f
 
         batch_size = images.size(0)
         total_loss += loss.item() * batch_size
-        probs = torch.sigmoid(logits.detach())
+        probs = torch.sigmoid(logits.detach()).view(-1)
 
         labels_all.extend(labels.detach().cpu().numpy().tolist())
         probs_all.extend(probs.cpu().numpy().tolist())
@@ -168,6 +168,7 @@ def run_training_loop(
         pretrained=bool(config.get("pretrained", True)),
         dropout=float(config.get("dropout", 0.4)),
         image_size=int(config["image_size"]),
+        **(config.get("model_kwargs") or {}),
     ).to(device)
 
     label_smoothing = float(config.get("label_smoothing", 0.0))

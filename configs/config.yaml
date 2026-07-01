@@ -14,7 +14,11 @@ lr: 1e-4
 weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
-backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small
+backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, esanet, magnet/esanetplus
+# Optional advanced model overrides, for example:
+# model_kwargs:
+#   embed_dim: 512
+#   num_heads: 8
 original_upsample_factor: 3
 train_real_percent: 100  # use 0-100% of original images in train_dir/original
 save_dir: "checkpoints_efficientnetb4"

@@ -1,6 +1,8 @@
 import timm
 from torch import nn
 
+from .esanet import ESANet, ESANetPlus, MAGNet
+
 
 class TimmBackbone(nn.Module):
     """Generic timm backbone with a dropout classifier head."""
@@ -79,6 +81,12 @@ _BACKBONE_ALIASES = {
     "swin-small": "swin_small",
     "swin_s": "swin_small",
     "swin-s": "swin_small",
+    "esanet": "esanet",
+    "esa_net": "esanet",
+    "magnet": "magnet",
+    "esanetplus": "magnet",
+    "esanet_plus": "magnet",
+    "esanet++": "magnet",
 }
 
 _TIMM_BACKBONES = {
@@ -100,8 +108,15 @@ def build_model(
     pretrained: bool = True,
     dropout: float = 0.4,
     image_size: int | None = None,
+    **model_kwargs,
 ) -> nn.Module:
     backbone_name = normalize_backbone_name(backbone)
+    if backbone_name == "esanet":
+        model_kwargs.setdefault("image_size", image_size)
+        return ESANet(pretrained=pretrained, dropout=dropout, **model_kwargs)
+    if backbone_name == "magnet":
+        model_kwargs.setdefault("image_size", image_size)
+        return MAGNet(pretrained=pretrained, dropout=dropout, **model_kwargs)
     if backbone_name == "efficientnetb4":
         return EfficientNetB4(pretrained=pretrained, dropout=dropout)
     if backbone_name == "swin_small":

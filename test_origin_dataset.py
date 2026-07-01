@@ -48,6 +48,7 @@ def main():
         pretrained=False,
         dropout=float(config.get("dropout", 0.4)),
         image_size=int(config["image_size"]),
+        **(config.get("model_kwargs") or {}),
     ).to(device)
     checkpoint = load_checkpoint(args.checkpoint, device)
     model.load_state_dict(checkpoint["model_state_dict"])

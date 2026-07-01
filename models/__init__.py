@@ -1,5 +1,8 @@
 from .backbones import (
     EfficientNetB4,
+    ESANet,
+    ESANetPlus,
+    MAGNet,
     SwinTransformerSmall,
     TimmBackbone,
     build_model,
@@ -8,6 +11,9 @@ from .backbones import (
 
 __all__ = [
     "EfficientNetB4",
+    "ESANet",
+    "ESANetPlus",
+    "MAGNet",
     "SwinTransformerSmall",
     "TimmBackbone",
     "build_model",
