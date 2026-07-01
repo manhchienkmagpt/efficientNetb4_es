@@ -1,7 +1,6 @@
 import torch
 import timm
 from torch import nn
-from torch.nn import functional as F
 
 
 def _create_vector_backbone(model_name: str, pretrained: bool, image_size: int | None = None) -> nn.Module:
@@ -69,152 +68,139 @@ class ESANet(nn.Module):
         return self.classifier(fused)
 
 
-class MAGNet(nn.Module):
-    """ESANet++ with multi-scale local features, frequency features, and gated fusion."""
+class CrossAttentionFusion(nn.Module):
+    """Fuse local (CNN) and global (Transformer) features with cross-attention."""
 
     def __init__(
         self,
-        local_backbone: str = "efficientnet_b4",
-        global_backbone: str = "swin_small_patch4_window7_224",
-        pretrained: bool = True,
-        embed_dim: int = 512,
-        num_heads: int = 8,
-        dropout: float = 0.3,
-        image_size: int | None = None,
+        local_dim: int,
+        global_dim: int,
+        proj_dim: int = 512,
+        num_heads: int = 4,
+        dropout: float = 0.1,
     ) -> None:
         super().__init__()
-        self.embed_dim = embed_dim
+        self.proj_local = nn.Linear(local_dim, proj_dim)
+        self.proj_global = nn.Linear(global_dim, proj_dim)
+        self.norm_local = nn.LayerNorm(proj_dim)
+        self.norm_global = nn.LayerNorm(proj_dim)
 
-        local_kwargs = {"features_only": True, "pretrained": pretrained}
-        self.local_backbone = timm.create_model(local_backbone, **local_kwargs)
-        local_channels = self.local_backbone.feature_info.channels()
-        self.local_adapters = nn.ModuleList(
-            nn.Sequential(
-                nn.Conv2d(channels, embed_dim, kernel_size=1, bias=False),
-                nn.BatchNorm2d(embed_dim),
-                nn.ReLU(inplace=True),
-            )
-            for channels in local_channels
+        self.local_attends_global = nn.MultiheadAttention(
+            proj_dim,
+            num_heads,
+            dropout=dropout,
+            batch_first=True,
         )
-        self.local_fusion = nn.Sequential(
-            nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(embed_dim),
-            nn.ReLU(inplace=True),
+        self.global_attends_local = nn.MultiheadAttention(
+            proj_dim,
+            num_heads,
+            dropout=dropout,
+            batch_first=True,
         )
-        self.local_pool = nn.AdaptiveAvgPool2d(1)
+        self.gate = nn.Sequential(
+            nn.Linear(proj_dim * 2, proj_dim),
+            nn.GELU(),
+            nn.Linear(proj_dim, 2),
+        )
+        self.out_dim = proj_dim * 2
 
-        self.global_backbone = _create_vector_backbone(
-            global_backbone,
+    def forward(self, local_feature: torch.Tensor, global_feature: torch.Tensor) -> torch.Tensor:
+        local_token = self.norm_local(self.proj_local(local_feature)).unsqueeze(1)
+        global_token = self.norm_global(self.proj_global(global_feature)).unsqueeze(1)
+
+        local_ctx, _ = self.local_attends_global(local_token, global_token, global_token)
+        global_ctx, _ = self.global_attends_local(global_token, local_token, local_token)
+        local_ctx = local_ctx.squeeze(1)
+        global_ctx = global_ctx.squeeze(1)
+
+        gate_weights = torch.softmax(self.gate(torch.cat([local_ctx, global_ctx], dim=1)), dim=1)
+        local_out = local_ctx * gate_weights[:, 0:1]
+        global_out = global_ctx * gate_weights[:, 1:2]
+        return torch.cat([local_out, global_out], dim=1)
+
+
+class ESANetV2(nn.Module):
+    """EfficientNet + Swin dual-branch model with cross-attention fusion."""
+
+    def __init__(
+        self,
+        efficient_name: str = "efficientnet_b0",
+        swin_name: str = "swin_tiny_patch4_window7_224",
+        pretrained: bool = True,
+        dropout: float = 0.3,
+        image_size: int | None = None,
+        proj_dim: int = 512,
+        num_heads: int = 4,
+        use_aux_heads: bool = True,
+    ) -> None:
+        super().__init__()
+        self.local_backbone = _create_vector_backbone(
+            efficient_name,
             pretrained=pretrained,
             image_size=image_size,
         )
+        self.global_backbone = _create_vector_backbone(
+            swin_name,
+            pretrained=pretrained,
+            image_size=image_size,
+        )
+
+        local_dim = _feature_dim(self.local_backbone)
         global_dim = _feature_dim(self.global_backbone)
 
-        self.frequency_branch = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, embed_dim, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(embed_dim),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d(1),
-        )
-
-        self.local_proj = nn.Linear(embed_dim, embed_dim)
-        self.global_proj = nn.Linear(global_dim, embed_dim)
-        self.freq_proj = nn.Linear(embed_dim, embed_dim)
-        self.local_to_global_attn = nn.MultiheadAttention(
-            embed_dim=embed_dim,
+        self.feat_dropout_local = nn.Dropout(dropout * 0.5)
+        self.feat_dropout_global = nn.Dropout(dropout * 0.5)
+        self.fusion = CrossAttentionFusion(
+            local_dim,
+            global_dim,
+            proj_dim=proj_dim,
             num_heads=num_heads,
-            batch_first=True,
+            dropout=dropout * 0.33,
         )
-        self.global_to_local_attn = nn.MultiheadAttention(
-            embed_dim=embed_dim,
-            num_heads=num_heads,
-            batch_first=True,
-        )
-        self.gate = nn.Linear(embed_dim * 3, 3)
 
         self.classifier = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, 256),
+            nn.Linear(self.fusion.out_dim, 512),
+            nn.LayerNorm(512),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(256, 64),
+            nn.Linear(512, 128),
+            nn.LayerNorm(128),
             nn.GELU(),
-            nn.Dropout(0.2),
-            nn.Linear(64, 1),
+            nn.Dropout(dropout * 0.6),
+            nn.Linear(128, 1),
         )
 
-    def extract_fft_features(self, x: torch.Tensor) -> torch.Tensor:
-        gray = x.mean(dim=1, keepdim=True)
-        fft = torch.fft.fft2(gray, norm="ortho")
-        fft = torch.fft.fftshift(fft, dim=(-2, -1))
-        magnitude = torch.log1p(torch.abs(fft))
-        mean = magnitude.mean(dim=(-2, -1), keepdim=True)
-        std = magnitude.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
-        return (magnitude - mean) / std
+        self.use_aux_heads = use_aux_heads
+        if use_aux_heads:
+            self.aux_local = nn.Linear(local_dim, 1)
+            self.aux_global = nn.Linear(global_dim, 1)
 
-    def _extract_local_feature(self, x: torch.Tensor) -> torch.Tensor:
-        feature_maps = self.local_backbone(x)
-        target_size = feature_maps[-1].shape[-2:]
-        adapted_maps = []
-        for feature_map, adapter in zip(feature_maps, self.local_adapters):
-            adapted = adapter(feature_map)
-            if adapted.shape[-2:] != target_size:
-                adapted = F.interpolate(
-                    adapted,
-                    size=target_size,
-                    mode="bilinear",
-                    align_corners=False,
-                )
-            adapted_maps.append(adapted)
-        local_map = torch.stack(adapted_maps, dim=0).sum(dim=0)
-        local_map = self.local_fusion(local_map)
-        return self.local_pool(local_map).flatten(1)
+        self._init_weights()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        local_feature = self._extract_local_feature(x)
+    def _init_weights(self) -> None:
+        for module in self.classifier.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
+                nn.init.zeros_(module.bias)
+
+    def forward(self, x: torch.Tensor):
+        local_feature = self.local_backbone(x)
         global_feature = self.global_backbone(x)
-        freq_feature = self.frequency_branch(self.extract_fft_features(x)).flatten(1)
 
-        local_proj = self.local_proj(local_feature)
-        global_proj = self.global_proj(global_feature)
-        freq_proj = self.freq_proj(freq_feature)
-
-        local_token = local_proj.unsqueeze(1)
-        global_token = global_proj.unsqueeze(1)
-        local_attended, _ = self.local_to_global_attn(
-            query=local_token,
-            key=global_token,
-            value=global_token,
-            need_weights=False,
+        fused = self.fusion(
+            self.feat_dropout_local(local_feature),
+            self.feat_dropout_global(global_feature),
         )
-        global_attended, _ = self.global_to_local_attn(
-            query=global_token,
-            key=local_token,
-            value=local_token,
-            need_weights=False,
-        )
-        local_cross = local_proj + local_attended.squeeze(1)
-        global_cross = global_proj + global_attended.squeeze(1)
+        main_logit = self.classifier(fused)
 
-        gate_input = torch.cat([local_cross, global_cross, freq_proj], dim=1)
-        weights = torch.softmax(self.gate(gate_input), dim=1)
-        fused = (
-            weights[:, 0:1] * local_cross
-            + weights[:, 1:2] * global_cross
-            + weights[:, 2:3] * freq_proj
-        )
-        return self.classifier(fused)
+        if self.use_aux_heads and self.training:
+            return main_logit, self.aux_local(local_feature), self.aux_global(global_feature)
+
+        return main_logit
 
 
-ESANetPlus = MAGNet
+MAGNet = ESANetV2
+ESANetPlus = ESANetV2
 
 
 if __name__ == "__main__":
@@ -223,6 +209,6 @@ if __name__ == "__main__":
     y = model(x)
     print(y.shape)
 
-    model = MAGNet(pretrained=False)
+    model = ESANetV2(pretrained=False)
     y = model(x)
-    print(y.shape)
+    print(y[0].shape if isinstance(y, tuple) else y.shape)

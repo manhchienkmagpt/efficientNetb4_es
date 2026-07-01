@@ -111,6 +111,7 @@ def main():
         pretrained=bool(config.get("pretrained", True)),
         dropout=float(config.get("dropout", 0.4)),
         image_size=int(config["image_size"]),
+        **(config.get("model_kwargs") or {}),
     ).to(device)
 
     criterion = nn.BCEWithLogitsLoss()
@@ -169,6 +170,7 @@ def main():
             device=device,
             optimizer=optimizer,
             threshold=threshold,
+            aux_loss_weight=float(config.get("aux_loss_weight", 0.3)),
         )
         val_metrics = run_one_epoch(
             model=model,

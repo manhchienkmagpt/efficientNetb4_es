@@ -14,17 +14,21 @@ lr: 1e-4
 weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
-backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, esanet, magnet/esanetplus
+backbone: "esanetv2"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, esanet, esanetv2, magnet/esanetplus
 # Optional advanced model overrides, for example:
-# model_kwargs:
-#   embed_dim: 512
-#   num_heads: 8
+model_kwargs:
+  efficient_name: "efficientnet_b0"
+  swin_name: "swin_tiny_patch4_window7_224"
+  proj_dim: 512
+  num_heads: 4
+  use_aux_heads: true
+aux_loss_weight: 0.3
 original_upsample_factor: 3
 train_real_percent: 100  # use 0-100% of original images in train_dir/original
-save_dir: "checkpoints_efficientnetb4"
-checkpoint_name: "best_efficientnetb4.pth"
-gan_save_dir: "checkpoints_efficientnetb4"
-gan_checkpoint_name: "best_efficientnetb4_gan.pth"
+save_dir: "checkpoints_esanetv2"
+checkpoint_name: "best_esanetv2.pth"
+gan_save_dir: "checkpoints_esanetv2"
+gan_checkpoint_name: "best_esanetv2_gan.pth"
 resume_from: null
 seed: 42
 threshold: 0.5

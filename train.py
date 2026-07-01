@@ -139,6 +139,7 @@ def run_one_epoch(
     optimizer=None,
     threshold: float = 0.5,
     label_smoothing: float = 0.0,
+    aux_loss_weight: float = 0.3,
     scaler: Optional[torch.cuda.amp.GradScaler] = None,
     use_amp: bool = False,
 ):
@@ -158,9 +159,20 @@ def run_one_epoch(
             optimizer.zero_grad(set_to_none=True)
 
         with torch.set_grad_enabled(is_train), torch.autocast(device_type=device.type, enabled=use_amp):
-            logits = model(images).view_as(labels)
+            model_output = model(images)
             smooth_labels = labels * (1.0 - label_smoothing) + label_smoothing * 0.5 if is_train and label_smoothing > 0.0 else labels
+            if isinstance(model_output, tuple):
+                logits = model_output[0].view_as(labels)
+                aux_losses = [
+                    criterion(aux_logits.view_as(labels), smooth_labels)
+                    for aux_logits in model_output[1:]
+                ]
+            else:
+                logits = model_output.view_as(labels)
+                aux_losses = []
             loss = criterion(logits, smooth_labels)
+            if aux_losses:
+                loss = loss + aux_loss_weight * torch.stack(aux_losses).mean()
 
         if is_train:
             if scaler is not None and scaler.is_enabled():
@@ -207,6 +219,7 @@ def run_training_loop(
     ).to(device)
 
     label_smoothing = float(config.get("label_smoothing", 0.0))
+    aux_loss_weight = float(config.get("aux_loss_weight", 0.3))
     use_amp = bool(config.get("use_amp", True)) and device.type == "cuda"
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
     pw = _pos_weight(train_loader.dataset, device) if config.get("use_pos_weight", False) else None
@@ -268,6 +281,7 @@ def run_training_loop(
             optimizer=optimizer,
             threshold=threshold,
             label_smoothing=label_smoothing,
+            aux_loss_weight=aux_loss_weight,
             scaler=scaler,
             use_amp=use_amp,
         )
