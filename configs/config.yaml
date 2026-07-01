@@ -1,8 +1,8 @@
-data_root: "D:/duong_huy_ct7/deepfake-data"
+data_root: "D:/chien_duy_thinh_ct7/gan_make_worse/data_training/ffpp_faces_scrfd"
 train_dir: "train"
 val_dir: "val"
 test_dir: "test"
-cross_dataset_root: "D:/duong_huy_ct7/deepfake-data/celeb-df/test"
+cross_dataset_root: "D:/chien_duy_thinh_ct7/gan_make_worse/data_training/celebdf_faces_scrfd/test"
 gan_fake_dir: "F:/DeepFakedata/chien_duy_thinh_output/gan_data/generated_fake_2"
 gan_real_dir: "F:/DeepFakedata/chien_duy_thinh_output/gan_data/generated_real"
 
