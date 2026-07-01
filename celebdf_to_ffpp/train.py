@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from common import DEFAULT_CONFIG_PATH
 
 from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
-from train import _count_labels, load_config, resolve_device, run_training_loop
+from train import _count_labels, _persistent_loader_kwargs, load_config, resolve_device, run_training_loop
 from utils.seed import set_seed
 
 
@@ -42,6 +42,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         mode="val",
     )
 
+    loader_kwargs = _persistent_loader_kwargs(int(config["num_workers"]))
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(config["batch_size"]),
@@ -49,6 +50,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         num_workers=int(config["num_workers"]),
         pin_memory=True,
         drop_last=False,
+        **loader_kwargs,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -57,6 +59,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         num_workers=int(config["num_workers"]),
         pin_memory=True,
         drop_last=False,
+        **loader_kwargs,
     )
     return train_loader, val_loader
 

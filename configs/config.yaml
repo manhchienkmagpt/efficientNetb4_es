@@ -29,6 +29,7 @@ resume_from: null
 seed: 42
 threshold: 0.5
 device: "cuda"
+use_amp: true  # mixed precision (autocast + GradScaler) on CUDA; ignored on CPU
 
 early_stopping_patience: 5
 lr_scheduler_patience: 2

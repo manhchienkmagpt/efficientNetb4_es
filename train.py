@@ -37,7 +37,11 @@ def resolve_device(config_device: str) -> torch.device:
     if config_device == "cuda" and not torch.cuda.is_available():
         print("CUDA is not available. Falling back to CPU.")
         return torch.device("cpu")
-    return torch.device(config_device)
+    device = torch.device(config_device)
+    if device.type == "cuda":
+        # Inputs are fixed-size, so let cuDNN pick the fastest conv algorithms.
+        torch.backends.cudnn.benchmark = True
+    return device
 
 
 def current_lrs(optimizer) -> list:
@@ -98,6 +102,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         mode="val",
     )
 
+    loader_kwargs = _persistent_loader_kwargs(int(config["num_workers"]))
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(config["batch_size"]),
@@ -105,6 +110,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         num_workers=int(config["num_workers"]),
         pin_memory=True,
         drop_last=False,
+        **loader_kwargs,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -113,16 +119,35 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         num_workers=int(config["num_workers"]),
         pin_memory=True,
         drop_last=False,
+        **loader_kwargs,
     )
     return train_loader, val_loader
 
 
-def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: float = 0.5, label_smoothing: float = 0.0):
+def _persistent_loader_kwargs(num_workers: int) -> Dict:
+    """Keep worker processes (and their imported albumentations/timm state) alive across epochs."""
+    if num_workers <= 0:
+        return {}
+    return {"persistent_workers": True, "prefetch_factor": 4}
+
+
+def run_one_epoch(
+    model,
+    loader,
+    criterion,
+    device,
+    optimizer=None,
+    threshold: float = 0.5,
+    label_smoothing: float = 0.0,
+    scaler: Optional[torch.cuda.amp.GradScaler] = None,
+    use_amp: bool = False,
+):
     is_train = optimizer is not None
     model.train(is_train)
-    total_loss = 0.0
-    labels_all = []
-    probs_all = []
+    total_loss = torch.zeros((), device=device)
+    total_samples = 0
+    labels_chunks = []
+    probs_chunks = []
 
     progress = tqdm(loader, desc="Train" if is_train else "Val", leave=False)
     for images, labels, _ in progress:
@@ -132,23 +157,33 @@ def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: f
         if is_train:
             optimizer.zero_grad(set_to_none=True)
 
-        with torch.set_grad_enabled(is_train):
+        with torch.set_grad_enabled(is_train), torch.autocast(device_type=device.type, enabled=use_amp):
             logits = model(images).view_as(labels)
             smooth_labels = labels * (1.0 - label_smoothing) + label_smoothing * 0.5 if is_train and label_smoothing > 0.0 else labels
             loss = criterion(logits, smooth_labels)
-            if is_train:
+
+        if is_train:
+            if scaler is not None and scaler.is_enabled():
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
                 loss.backward()
                 optimizer.step()
 
         batch_size = images.size(0)
-        total_loss += loss.item() * batch_size
+        loss_detached = loss.detach()
+        total_loss += loss_detached * batch_size
+        total_samples += batch_size
         probs = torch.sigmoid(logits.detach()).view(-1)
 
-        labels_all.extend(labels.detach().cpu().numpy().tolist())
-        probs_all.extend(probs.cpu().numpy().tolist())
-        progress.set_postfix(loss=f"{loss.item():.4f}")
+        labels_chunks.append(labels.detach())
+        probs_chunks.append(probs)
+        progress.set_postfix(loss=f"{loss_detached.item():.4f}")
 
-    avg_loss = total_loss / len(loader.dataset)
+    avg_loss = (total_loss / total_samples).item()
+    labels_all = torch.cat(labels_chunks).cpu().numpy()
+    probs_all = torch.cat(probs_chunks).cpu().numpy()
     return compute_binary_metrics(labels_all, probs_all, threshold=threshold, loss=avg_loss)
 
 
@@ -172,6 +207,8 @@ def run_training_loop(
     ).to(device)
 
     label_smoothing = float(config.get("label_smoothing", 0.0))
+    use_amp = bool(config.get("use_amp", True)) and device.type == "cuda"
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
     pw = _pos_weight(train_loader.dataset, device) if config.get("use_pos_weight", False) else None
     criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
     optimizer = AdamW(
@@ -231,6 +268,8 @@ def run_training_loop(
             optimizer=optimizer,
             threshold=threshold,
             label_smoothing=label_smoothing,
+            scaler=scaler,
+            use_amp=use_amp,
         )
         val_metrics = run_one_epoch(
             model=model,
@@ -239,6 +278,7 @@ def run_training_loop(
             device=device,
             optimizer=None,
             threshold=threshold,
+            use_amp=use_amp,
         )
 
         val_auc = float(val_metrics["auc"])

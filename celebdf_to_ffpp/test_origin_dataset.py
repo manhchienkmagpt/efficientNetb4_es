@@ -32,19 +32,21 @@ def parse_args():
 def predict(model, loader, device) -> Tuple[list, list, list]:
     model.eval()
     image_paths = []
-    labels_all = []
-    probs_all = []
+    labels_chunks = []
+    probs_chunks = []
 
-    with torch.no_grad():
+    with torch.no_grad(), torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
         for images, labels, paths in tqdm(loader, desc="Test CelebDF origin dataset"):
             images = images.to(device, non_blocking=True)
             logits = model(images)
             probs = torch.sigmoid(logits)
 
             image_paths.extend(paths)
-            labels_all.extend(labels.numpy().tolist())
-            probs_all.extend(probs.cpu().numpy().tolist())
+            labels_chunks.append(labels)
+            probs_chunks.append(probs.detach())
 
+    labels_all = torch.cat(labels_chunks).numpy().tolist()
+    probs_all = torch.cat(probs_chunks).cpu().numpy().tolist()
     return image_paths, labels_all, probs_all
 
 

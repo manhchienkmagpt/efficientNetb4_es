@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 from torch.utils.data import ConcatDataset, DataLoader
 
 from datasets import DeepfakeFrameDataset, GANFrameDataset, get_eval_transform, get_train_transform
-from train import load_config, resolve_device, run_training_loop
+from train import _persistent_loader_kwargs, load_config, resolve_device, run_training_loop
 from utils.seed import set_seed
 
 
@@ -57,6 +57,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     )
 
     train_dataset = ConcatDataset([ffpp_train_dataset, gan_train_dataset])
+    loader_kwargs = _persistent_loader_kwargs(int(config["num_workers"]))
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(config["batch_size"]),
@@ -64,6 +65,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         num_workers=int(config["num_workers"]),
         pin_memory=True,
         drop_last=False,
+        **loader_kwargs,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -72,6 +74,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         num_workers=int(config["num_workers"]),
         pin_memory=True,
         drop_last=False,
+        **loader_kwargs,
     )
     return train_loader, val_loader
 

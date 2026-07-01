@@ -61,6 +61,7 @@ All paths and hyperparameters live in `configs/config.yaml`. Key knobs:
 | `early_stopping_patience` | `5` | Epochs without val-acc improvement before stopping |
 | `threshold` | `0.5` | Sigmoid threshold for binary prediction at inference |
 | `gan_fake_dir` / `gan_real_dir` | — | Required only for `train_with_gan.py` |
+| `use_amp` | `true` | Mixed precision (autocast + GradScaler) on CUDA; no-op on CPU |
 
 Update `data_root` and `cross_dataset_root` to point to local dataset paths before running.
 
@@ -96,3 +97,5 @@ Directory matching is case-insensitive.
 - `train_real_percent` downsampling uses a fixed seed (`seed` in config) for reproducibility.
 - Augmentation uses **albumentations**: HorizontalFlip, Rotate(±10°), Scale, Translate, BrightnessContrast, GaussNoise, GaussianBlur, ImageCompression at train time; Resize(224) + ImageNet normalization only at eval/test time.
 - `utils/metrics.py::compute_binary_metrics()` returns accuracy, F1, precision, recall, AUC; `safe_auc()` returns NaN when only one class is present.
+- `resolve_device()` enables `torch.backends.cudnn.benchmark` on CUDA; DataLoaders use `persistent_workers`/`prefetch_factor=4` whenever `num_workers > 0` so worker processes (and their imported albumentations/timm state) survive across epochs instead of respawning each epoch.
+- `run_one_epoch()` accumulates per-batch loss/labels/probs as GPU tensors and only syncs to CPU once at the end of the epoch, instead of once per batch — reduces CUDA-sync overhead on small batch sizes.

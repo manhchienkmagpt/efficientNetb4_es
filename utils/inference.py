@@ -8,17 +8,19 @@ from tqdm import tqdm
 def predict(model, loader, device, desc: str = "Test") -> Tuple[List[str], List[float], List[float]]:
     model.eval()
     image_paths: List[str] = []
-    labels_all: List[float] = []
-    probs_all: List[float] = []
+    labels_chunks = []
+    probs_chunks = []
 
-    with torch.no_grad():
+    with torch.no_grad(), torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
         for images, labels, paths in tqdm(loader, desc=desc):
             images = images.to(device, non_blocking=True)
             probs = torch.sigmoid(model(images)).view(-1)
             image_paths.extend(paths)
-            labels_all.extend(labels.numpy().tolist())
-            probs_all.extend(probs.cpu().numpy().tolist())
+            labels_chunks.append(labels)
+            probs_chunks.append(probs.detach())
 
+    labels_all = torch.cat(labels_chunks).numpy().tolist()
+    probs_all = torch.cat(probs_chunks).cpu().numpy().tolist()
     return image_paths, labels_all, probs_all
 
 
@@ -33,17 +35,19 @@ def predict_tta(model, loader, device, desc: str = "Test TTA") -> Tuple[List[str
 
     model.eval()
     image_paths: List[str] = []
-    labels_all: List[float] = []
-    probs_all: List[float] = []
+    labels_chunks = []
+    probs_chunks = []
 
-    with torch.no_grad():
+    with torch.no_grad(), torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
         for images, labels, paths in tqdm(loader, desc=desc):
             images = images.to(device, non_blocking=True)
             aug_probs = torch.stack([
                 torch.sigmoid(model(aug(images))).view(-1) for aug in tta_transforms
             ]).mean(0)
             image_paths.extend(paths)
-            labels_all.extend(labels.numpy().tolist())
-            probs_all.extend(aug_probs.cpu().numpy().tolist())
+            labels_chunks.append(labels)
+            probs_chunks.append(aug_probs.detach())
 
+    labels_all = torch.cat(labels_chunks).numpy().tolist()
+    probs_all = torch.cat(probs_chunks).cpu().numpy().tolist()
     return image_paths, labels_all, probs_all
