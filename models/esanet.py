@@ -124,8 +124,8 @@ class ESANetV2(nn.Module):
 
     def __init__(
         self,
-        efficient_name: str = "efficientnet_b0",
-        swin_name: str = "swin_tiny_patch4_window7_224",
+        efficient_name: str = "efficientnet_b4",
+        swin_name: str = "swin_small_patch4_window7_224",
         pretrained: bool = True,
         dropout: float = 0.3,
         image_size: int | None = None,

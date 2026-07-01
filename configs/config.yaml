@@ -17,8 +17,8 @@ pretrained: true
 backbone: "esanetv2"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, esanet, esanetv2, magnet/esanetplus
 # Optional advanced model overrides, for example:
 model_kwargs:
-  efficient_name: "efficientnet_b0"
-  swin_name: "swin_tiny_patch4_window7_224"
+  efficient_name: "efficientnet_b4"
+  swin_name: "swin_small_patch4_window7_224"
   proj_dim: 512
   num_heads: 4
   use_aux_heads: true
