@@ -79,6 +79,19 @@ def unpack_model_output(output):
     return output, None
 
 
+def get_classifier_weight(model) -> Optional[torch.Tensor]:
+    classifier = getattr(model, "classifier", None)
+    if classifier is None:
+        return None
+    if hasattr(classifier, "weight"):
+        return classifier.weight
+    if isinstance(classifier, nn.Sequential):
+        for module in reversed(classifier):
+            if isinstance(module, nn.Linear):
+                return module.weight
+    return None
+
+
 def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     image_size = int(config["image_size"])
     train_transform = get_train_transform(image_size)
@@ -159,9 +172,10 @@ def run_one_epoch(
                 and fa_criterion is not None
                 and lambda_fal > 0.0
                 and features is not None
-                and hasattr(model, "classifier")
             ):
-                loss = loss + lambda_fal * fa_criterion(features, labels, model.classifier.weight)
+                classifier_weight = get_classifier_weight(model)
+                if classifier_weight is not None:
+                    loss = loss + lambda_fal * fa_criterion(features, labels, classifier_weight)
             if is_train:
                 loss.backward()
                 optimizer.step()
@@ -194,6 +208,9 @@ def run_training_loop(
         pretrained=bool(config.get("pretrained", True)),
         dropout=float(config.get("dropout", 0.4)),
         image_size=int(config["image_size"]),
+        freq_in_channels=int(config.get("freq_in_channels", 3)),
+        freq_dim=int(config.get("freq_dim", 128)),
+        use_freq=bool(config.get("use_freq", True)),
     ).to(device)
 
     label_smoothing = float(config.get("label_smoothing", 0.0))

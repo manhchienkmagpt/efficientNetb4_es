@@ -105,7 +105,7 @@ python train.py --config configs/config.yaml
 Choose a backbone in `configs/config.yaml`:
 
 ```yaml
-backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, redesigned_favit
+backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, redesigned_favit, favit_freq_lite
 ```
 
 Available values:
@@ -115,14 +115,28 @@ Available values:
 - `swin_tiny`: Swin Transformer Tiny
 - `swin_small`: Swin Transformer Small
 - `redesigned_favit`: frozen ViT-B/16 backbone with trainable GAM, LAM, CNN local branch, and classifier
+- `favit_freq_lite`: `redesigned_favit` style RGB branch plus a lightweight frequency CNN branch
 
-`redesigned_favit` returns raw logits plus CLS features internally. Use `lambda_fal` to enable the optional forgery-aware loss:
+`redesigned_favit` and `favit_freq_lite` return raw logits plus features internally. Use `lambda_fal` to enable the optional forgery-aware loss:
 
 ```yaml
-backbone: "redesigned_favit"
+backbone: "favit_freq_lite"
+freq_in_channels: 3
+freq_dim: 128
+use_freq: true
 lambda_fal: 0.1
 fal_margin: 0.25
 fal_scale: 32
+```
+
+`favit_freq_lite` accepts an optional FFT/SRM tensor in its forward pass. If `freq_x` is omitted, it uses the RGB input as the frequency branch input. To create FFT magnitude input manually:
+
+```python
+from models import FAViTFreqLite, make_fft_image
+
+model = FAViTFreqLite(pretrained=True, use_freq=True)
+freq_images = make_fft_image(images)
+logits, features = model(images, freq_images)
 ```
 
 Resume from a checkpoint:

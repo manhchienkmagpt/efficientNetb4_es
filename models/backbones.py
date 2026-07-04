@@ -1,6 +1,7 @@
 import timm
 from torch import nn
 
+from .favit_freq_lite import FAViTFreqLite
 from .redesigned_favit import RedesignedFAViT
 
 
@@ -84,6 +85,9 @@ _BACKBONE_ALIASES = {
     "redesigned_favit": "redesigned_favit",
     "redesigned-favit": "redesigned_favit",
     "favit": "redesigned_favit",
+    "favit_freq_lite": "favit_freq_lite",
+    "favit-freq-lite": "favit_freq_lite",
+    "favit_freq": "favit_freq_lite",
 }
 
 _TIMM_BACKBONES = {
@@ -105,6 +109,9 @@ def build_model(
     pretrained: bool = True,
     dropout: float = 0.4,
     image_size: int | None = None,
+    freq_in_channels: int = 3,
+    freq_dim: int = 128,
+    use_freq: bool = True,
 ) -> nn.Module:
     backbone_name = normalize_backbone_name(backbone)
     if backbone_name == "efficientnetb4":
@@ -117,6 +124,14 @@ def build_model(
         )
     if backbone_name == "redesigned_favit":
         return RedesignedFAViT(pretrained=pretrained, num_classes=1)
+    if backbone_name == "favit_freq_lite":
+        return FAViTFreqLite(
+            pretrained=pretrained,
+            num_classes=1,
+            freq_in_channels=freq_in_channels,
+            freq_dim=freq_dim,
+            use_freq=use_freq,
+        )
     return TimmBackbone(
         model_name=_TIMM_BACKBONES[backbone_name],
         pretrained=pretrained,

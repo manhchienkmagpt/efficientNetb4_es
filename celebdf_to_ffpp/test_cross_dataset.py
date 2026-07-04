@@ -52,6 +52,9 @@ def main():
         pretrained=False,
         dropout=float(config.get("dropout", 0.4)),
         image_size=int(config["image_size"]),
+        freq_in_channels=int(config.get("freq_in_channels", 3)),
+        freq_dim=int(config.get("freq_dim", 128)),
+        use_freq=bool(config.get("use_freq", True)),
     ).to(device)
 
     checkpoint = load_checkpoint(args.checkpoint, device)
