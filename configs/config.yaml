@@ -15,7 +15,7 @@ weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
 backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small
-original_upsample_factor: 3
+original_upsample_factor: null
 train_real_percent: 100  # use 0-100% of original images in train_dir/original
 save_dir: "checkpoints_efficientnetb4"
 checkpoint_name: "best_efficientnetb4.pth"

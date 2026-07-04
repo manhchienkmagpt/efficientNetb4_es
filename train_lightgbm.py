@@ -122,7 +122,6 @@ def load_feature_model(checkpoint_path: str, base_config: Dict, device: torch.de
         pretrained=False,
         dropout=float(cfg.get("dropout", 0.4)),
         image_size=int(cfg["image_size"]),
-        **(cfg.get("model_kwargs") or {}),
     ).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
@@ -133,6 +132,14 @@ def cache_path(cache_dir: Optional[str], split_name: str) -> Optional[Path]:
     if cache_dir is None:
         return None
     return Path(cache_dir) / f"{split_name}_features.npz"
+
+
+def model_features(model: torch.nn.Module, images: torch.Tensor) -> torch.Tensor:
+    if hasattr(model, "extract_features"):
+        return model.extract_features(images)
+    if hasattr(model, "backbone"):
+        return model.backbone(images)
+    return model(images)
 
 
 def extract_features(
@@ -156,7 +163,7 @@ def extract_features(
             images = images.to(device, non_blocking=True)
             batch_features = []
             for model in models:
-                features = model.extract_features(images)
+                features = model_features(model, images)
                 batch_features.append(features.flatten(1).detach().cpu().numpy())
             feature_chunks.append(np.concatenate(batch_features, axis=1).astype(np.float32))
             label_chunks.append(labels.numpy().astype(np.int64))
