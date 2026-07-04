@@ -24,6 +24,7 @@ deepfake_efficientnetb4/
 |-- utils/
 |-- train.py
 |-- train_with_gan.py
+|-- train_lightgbm.py
 |-- test_origin_dataset.py
 |-- test_cross_dataset.py
 |-- requirements.txt
@@ -37,6 +38,12 @@ cd deepfake_efficientnetb4
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+Install LightGBM when training the LightGBM head:
+
+```bash
+pip install lightgbm joblib
 ```
 
 Install the CUDA build of PyTorch that matches your machine if needed:
@@ -173,6 +180,68 @@ This script trains on origin train data plus GAN train data and keeps origin val
 ```text
 checkpoints/best_model_with_gan.pth
 ```
+
+## Train LightGBM Head
+
+`train_lightgbm.py` trains a LightGBM classifier on frozen feature vectors extracted from one or more trained backbone checkpoints. The PyTorch backbone checkpoints are used only as feature extractors; LightGBM learns the final real/fake decision from those features.
+
+Train a LightGBM head from one backbone checkpoint:
+
+```bash
+python train_lightgbm.py --config configs/config.yaml --checkpoint checkpoints_efficientnetb4/best_efficientnetb4.pth --output-dir lightgbm_outputs --cache-dir lightgbm_cache
+```
+
+Use multiple backbone checkpoints as a feature ensemble by repeating `--checkpoint`:
+
+```bash
+python train_lightgbm.py --config configs/config.yaml ^
+  --checkpoint checkpoints_efficientnetb4/best_efficientnetb4.pth ^
+  --checkpoint checkpoints_resnet50/best_resnet50.pth ^
+  --checkpoint checkpoints_swin_small/best_swin_small.pth ^
+  --output-dir lightgbm_ensemble_outputs ^
+  --cache-dir lightgbm_ensemble_cache
+```
+
+Append configured GAN real/fake data to the LightGBM training split:
+
+```bash
+python train_lightgbm.py --config configs/config.yaml --checkpoint checkpoints_efficientnetb4/best_efficientnetb4.pth --include-gan --output-dir lightgbm_outputs --cache-dir lightgbm_cache
+```
+
+Evaluate the trained LightGBM head on validation, origin test, and cross-dataset test:
+
+```bash
+python train_lightgbm.py --config configs/config.yaml ^
+  --checkpoint checkpoints_efficientnetb4/best_efficientnetb4.pth ^
+  --output-dir lightgbm_outputs ^
+  --cache-dir lightgbm_cache ^
+  --test-origin ^
+  --test-cross
+```
+
+LightGBM outputs are saved under `--output-dir`. By default this is:
+
+```text
+lightgbm_outputs/
+|-- lightgbm_model.joblib
+|-- metadata.json
+|-- metrics.json
+|-- val_predictions.csv
+|-- origin_predictions.csv
+`-- cross_predictions.csv
+```
+
+`lightgbm_model.joblib` is the saved LightGBM model. `metadata.json` records the backbone checkpoints, backbone names, threshold, feature dimension, and whether GAN data was included. Feature caches are saved under `--cache-dir` as compressed `.npz` files, for example `train_features.npz`, `val_features.npz`, `test_origin_features.npz`, and `test_cross_features.npz`. Use `--no-cache` to force feature extraction again.
+
+Useful LightGBM options:
+
+- `--num-leaves`: tree leaf count
+- `--learning-rate`: boosting learning rate
+- `--n-estimators`: maximum boosting rounds
+- `--subsample`: row sampling ratio
+- `--colsample-bytree`: feature sampling ratio
+- `--early-stopping-rounds`: stop after validation AUC stops improving
+- `--threshold`: override the config threshold for predictions
 
 ## Test Origin Dataset
 
