@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from datasets import DeepfakeFrameDataset, GANFrameDataset, get_eval_transform
 from models import build_model
-from train import _persistent_loader_kwargs, load_config, resolve_device
+from train import load_config, resolve_device
 from utils.checkpoint import load_checkpoint
 from utils.metrics import binary_confusion_matrix, compute_binary_metrics, format_metrics
 
@@ -84,6 +84,12 @@ def build_cross_dataset(config: Dict):
     )
 
 
+def persistent_loader_kwargs(num_workers: int) -> Dict:
+    if num_workers <= 0:
+        return {}
+    return {"persistent_workers": True}
+
+
 def make_loader(config: Dict, dataset, shuffle: bool = False) -> DataLoader:
     num_workers = int(config["num_workers"])
     return DataLoader(
@@ -93,7 +99,7 @@ def make_loader(config: Dict, dataset, shuffle: bool = False) -> DataLoader:
         num_workers=num_workers,
         pin_memory=True,
         drop_last=False,
-        **_persistent_loader_kwargs(num_workers),
+        **persistent_loader_kwargs(num_workers),
     )
 
 
