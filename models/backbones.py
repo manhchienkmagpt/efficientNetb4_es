@@ -1,6 +1,8 @@
 import timm
 from torch import nn
 
+from .redesigned_favit import RedesignedFAViT
+
 
 class TimmBackbone(nn.Module):
     """Generic timm backbone with a dropout classifier head."""
@@ -79,6 +81,9 @@ _BACKBONE_ALIASES = {
     "swin-small": "swin_small",
     "swin_s": "swin_small",
     "swin-s": "swin_small",
+    "redesigned_favit": "redesigned_favit",
+    "redesigned-favit": "redesigned_favit",
+    "favit": "redesigned_favit",
 }
 
 _TIMM_BACKBONES = {
@@ -110,6 +115,8 @@ def build_model(
             dropout=dropout,
             image_size=image_size,
         )
+    if backbone_name == "redesigned_favit":
+        return RedesignedFAViT(pretrained=pretrained, num_classes=1)
     return TimmBackbone(
         model_name=_TIMM_BACKBONES[backbone_name],
         pretrained=pretrained,

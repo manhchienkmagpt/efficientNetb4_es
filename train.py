@@ -12,7 +12,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
 
 from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
-from models import build_model
+from models import FALoss, build_model
 from utils.checkpoint import load_checkpoint, save_checkpoint
 from utils.metrics import compute_binary_metrics, format_metrics
 from utils.seed import set_seed
@@ -72,6 +72,13 @@ def _pos_weight(dataset, device: torch.device) -> Optional[torch.Tensor]:
     return torch.tensor([pw], device=device)
 
 
+def unpack_model_output(output):
+    if isinstance(output, tuple):
+        logits, features = output
+        return logits, features
+    return output, None
+
+
 def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     image_size = int(config["image_size"])
     train_transform = get_train_transform(image_size)
@@ -117,7 +124,17 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     return train_loader, val_loader
 
 
-def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: float = 0.5, label_smoothing: float = 0.0):
+def run_one_epoch(
+    model,
+    loader,
+    criterion,
+    device,
+    optimizer=None,
+    threshold: float = 0.5,
+    label_smoothing: float = 0.0,
+    fa_criterion=None,
+    lambda_fal: float = 0.0,
+):
     is_train = optimizer is not None
     model.train(is_train)
     total_loss = 0.0
@@ -133,16 +150,25 @@ def run_one_epoch(model, loader, criterion, device, optimizer=None, threshold: f
             optimizer.zero_grad(set_to_none=True)
 
         with torch.set_grad_enabled(is_train):
-            logits = model(images)
+            logits, features = unpack_model_output(model(images))
+            logits_for_loss = logits.view_as(labels)
             smooth_labels = labels * (1.0 - label_smoothing) + label_smoothing * 0.5 if is_train and label_smoothing > 0.0 else labels
-            loss = criterion(logits, smooth_labels)
+            loss = criterion(logits_for_loss, smooth_labels)
+            if (
+                is_train
+                and fa_criterion is not None
+                and lambda_fal > 0.0
+                and features is not None
+                and hasattr(model, "classifier")
+            ):
+                loss = loss + lambda_fal * fa_criterion(features, labels, model.classifier.weight)
             if is_train:
                 loss.backward()
                 optimizer.step()
 
         batch_size = images.size(0)
         total_loss += loss.item() * batch_size
-        probs = torch.sigmoid(logits.detach())
+        probs = torch.sigmoid(logits.detach().view(-1))
 
         labels_all.extend(labels.detach().cpu().numpy().tolist())
         probs_all.extend(probs.cpu().numpy().tolist())
@@ -173,8 +199,13 @@ def run_training_loop(
     label_smoothing = float(config.get("label_smoothing", 0.0))
     pw = _pos_weight(train_loader.dataset, device) if config.get("use_pos_weight", False) else None
     criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
+    lambda_fal = float(config.get("lambda_fal", 0.0))
+    fa_criterion = FALoss(
+        margin=float(config.get("fal_margin", 0.25)),
+        scale=float(config.get("fal_scale", 32.0)),
+    ) if lambda_fal > 0.0 else None
     optimizer = AdamW(
-        model.parameters(),
+        filter(lambda p: p.requires_grad, model.parameters()),
         lr=float(config.get("lr", 1e-4)),
         weight_decay=float(config.get("weight_decay", 1e-4)),
     )
@@ -230,6 +261,8 @@ def run_training_loop(
             optimizer=optimizer,
             threshold=threshold,
             label_smoothing=label_smoothing,
+            fa_criterion=fa_criterion,
+            lambda_fal=lambda_fal,
         )
         val_metrics = run_one_epoch(
             model=model,

@@ -11,7 +11,7 @@ from common import DEFAULT_CONFIG_PATH
 
 from datasets import DeepfakeFrameDataset, get_eval_transform
 from models import build_model
-from train import load_config, resolve_device
+from train import load_config, resolve_device, unpack_model_output
 from utils.checkpoint import load_checkpoint
 from utils.metrics import binary_confusion_matrix, compute_binary_metrics, format_metrics
 
@@ -38,8 +38,8 @@ def predict(model, loader, device) -> Tuple[list, list, list]:
     with torch.no_grad():
         for images, labels, paths in tqdm(loader, desc="Test CelebDF origin dataset"):
             images = images.to(device, non_blocking=True)
-            logits = model(images)
-            probs = torch.sigmoid(logits)
+            logits, _ = unpack_model_output(model(images))
+            probs = torch.sigmoid(logits.view(-1))
 
             image_paths.extend(paths)
             labels_all.extend(labels.numpy().tolist())

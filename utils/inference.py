@@ -4,6 +4,8 @@ import torch
 import torchvision.transforms.functional as TF
 from tqdm import tqdm
 
+from train import unpack_model_output
+
 
 def predict(model, loader, device, desc: str = "Test") -> Tuple[List[str], List[float], List[float]]:
     model.eval()
@@ -14,7 +16,8 @@ def predict(model, loader, device, desc: str = "Test") -> Tuple[List[str], List[
     with torch.no_grad():
         for images, labels, paths in tqdm(loader, desc=desc):
             images = images.to(device, non_blocking=True)
-            probs = torch.sigmoid(model(images))
+            logits, _ = unpack_model_output(model(images))
+            probs = torch.sigmoid(logits.view(-1))
             image_paths.extend(paths)
             labels_all.extend(labels.numpy().tolist())
             probs_all.extend(probs.cpu().numpy().tolist())
@@ -40,7 +43,8 @@ def predict_tta(model, loader, device, desc: str = "Test TTA") -> Tuple[List[str
         for images, labels, paths in tqdm(loader, desc=desc):
             images = images.to(device, non_blocking=True)
             aug_probs = torch.stack([
-                torch.sigmoid(model(aug(images))) for aug in tta_transforms
+                torch.sigmoid(unpack_model_output(model(aug(images)))[0].view(-1))
+                for aug in tta_transforms
             ]).mean(0)
             image_paths.extend(paths)
             labels_all.extend(labels.numpy().tolist())

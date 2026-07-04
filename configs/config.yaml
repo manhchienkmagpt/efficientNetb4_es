@@ -14,7 +14,7 @@ lr: 1e-4
 weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
-backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small
+backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, redesigned_favit
 original_upsample_factor: null
 train_real_percent: 100  # use 0-100% of original images in train_dir/original
 save_dir: "checkpoints_efficientnetb4"
@@ -33,3 +33,6 @@ min_lr: 1e-7
 
 use_pos_weight: true   # weight loss by num_real/num_fake to reduce fake-prediction bias
 label_smoothing: 0.05  # soft targets: prevents overconfidence on FF++-specific features
+lambda_fal: 0.0        # set > 0 to add FALoss for redesigned_favit
+fal_margin: 0.25
+fal_scale: 32

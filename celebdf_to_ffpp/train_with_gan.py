@@ -12,7 +12,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 from common import DEFAULT_CONFIG_PATH
 
 from datasets import DeepfakeFrameDataset, GANFrameDataset, get_eval_transform, get_train_transform
-from models import build_model
+from models import FALoss, build_model
 from train import _count_labels, current_lrs, load_config, lr_reduced, resolve_device, run_one_epoch
 from utils.checkpoint import load_checkpoint, save_checkpoint
 from utils.metrics import format_metrics
@@ -114,8 +114,13 @@ def main():
     ).to(device)
 
     criterion = nn.BCEWithLogitsLoss()
+    lambda_fal = float(config.get("lambda_fal", 0.0))
+    fa_criterion = FALoss(
+        margin=float(config.get("fal_margin", 0.25)),
+        scale=float(config.get("fal_scale", 32.0)),
+    ) if lambda_fal > 0.0 else None
     optimizer = AdamW(
-        model.parameters(),
+        filter(lambda p: p.requires_grad, model.parameters()),
         lr=float(config.get("lr", 1e-4)),
         weight_decay=float(config.get("weight_decay", 1e-4)),
     )
@@ -169,6 +174,8 @@ def main():
             device=device,
             optimizer=optimizer,
             threshold=threshold,
+            fa_criterion=fa_criterion,
+            lambda_fal=lambda_fal,
         )
         val_metrics = run_one_epoch(
             model=model,
