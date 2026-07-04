@@ -192,6 +192,7 @@ def train_lightgbm(args, config: Dict, x_train, y_train, x_val, y_val):
 
     model = LGBMClassifier(
         objective="binary",
+        metric="auc",
         n_estimators=args.n_estimators,
         learning_rate=args.learning_rate,
         num_leaves=args.num_leaves,
@@ -207,11 +208,21 @@ def train_lightgbm(args, config: Dict, x_train, y_train, x_val, y_val):
         eval_set=[(x_val, y_val)],
         eval_metric="auc",
         callbacks=[
-            early_stopping(args.early_stopping_rounds),
+            early_stopping(args.early_stopping_rounds, first_metric_only=True),
             log_evaluation(period=25),
         ],
     )
     return model
+
+
+def best_val_auc(model) -> Optional[float]:
+    score = getattr(model, "best_score_", None)
+    if not isinstance(score, dict):
+        return None
+    valid_scores = score.get("valid_0") or score.get("validation_0")
+    if not isinstance(valid_scores, dict) or "auc" not in valid_scores:
+        return None
+    return float(valid_scores["auc"])
 
 
 def evaluate_split(model, x, y, paths, threshold: float, output_csv: Path, title: str):
@@ -276,12 +287,17 @@ def main():
     print(f"Feature shape: train={x_train.shape}, val={x_val.shape}")
 
     lightgbm_model = train_lightgbm(args, config, x_train, y_train, x_val, y_val)
+    best_iteration = getattr(lightgbm_model, "best_iteration_", None)
+    best_auc = best_val_auc(lightgbm_model)
     metadata = {
         "checkpoints": args.checkpoint,
         "backbones": backbone_names,
         "threshold": threshold,
         "feature_dim": int(x_train.shape[1]),
         "include_gan": bool(args.include_gan),
+        "early_stopping_metric": "val_auc",
+        "best_iteration": int(best_iteration) if best_iteration is not None else None,
+        "best_val_auc": best_auc,
     }
 
     try:
@@ -290,8 +306,16 @@ def main():
         raise ImportError("Install joblib or scikit-learn to save the LightGBM model.") from exc
 
     joblib.dump(lightgbm_model, output_dir / "lightgbm_model.joblib")
+    if best_iteration is not None:
+        lightgbm_model.booster_.save_model(
+            str(output_dir / "lightgbm_best_auc.txt"),
+            num_iteration=int(best_iteration),
+        )
     (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     print(f"Saved LightGBM model to: {output_dir / 'lightgbm_model.joblib'}")
+    if best_iteration is not None:
+        print(f"Saved best-AUC LightGBM booster to: {output_dir / 'lightgbm_best_auc.txt'}")
+        print(f"Best val AUC: {best_auc:.6f} at iteration {best_iteration}" if best_auc is not None else f"Best iteration: {best_iteration}")
 
     metrics = {
         "val": evaluate_split(
