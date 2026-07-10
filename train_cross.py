@@ -47,7 +47,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
         train_transform=None,
         eval_transform=eval_transform,
         original_upsample_factor=0,
-        mode="test",
+        mode="val",
     )
 
     train_loader = DataLoader(
@@ -72,7 +72,7 @@ def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
 def run_training_loop(
     config: Dict,
     train_loader: DataLoader,
-    cross_loader: DataLoader,
+    val_loader: DataLoader,
     checkpoint_path: Path,
     device: torch.device,
     resume_path: Optional[str] = None,
@@ -114,7 +114,7 @@ def run_training_loop(
 
     best_auc = -math.inf
     best_accuracy = -math.inf
-    epochs_without_auc_improvement = 0
+    epochs_without_accuracy_improvement = 0
     early_stopping_patience = int(config.get("early_stopping_patience", 5))
     total_epochs = int(config.get("epochs", 30))
     start_epoch = 1
@@ -129,7 +129,7 @@ def run_training_loop(
 
         best_auc = float(checkpoint.get("best_auc", best_auc))
         best_accuracy = float(checkpoint.get("best_accuracy", best_accuracy))
-        epochs_without_auc_improvement = int(
+        epochs_without_accuracy_improvement = int(
             checkpoint.get("epochs_without_improvement", 0)
         )
         checkpoint_epoch = int(checkpoint.get("epoch", 0))
@@ -156,25 +156,26 @@ def run_training_loop(
             fa_criterion=fa_criterion,
             lambda_fal=lambda_fal,
         )
-        cross_metrics = run_one_epoch(
+        val_metrics = run_one_epoch(
             model=model,
-            loader=cross_loader,
+            loader=val_loader,
             criterion=criterion,
             device=device,
             optimizer=None,
             threshold=threshold,
         )
 
-        cross_auc = float(cross_metrics["auc"])
-        cross_accuracy = float(cross_metrics["accuracy"])
-        auc_improved = math.isfinite(cross_auc) and cross_auc > best_auc
-        if math.isfinite(cross_accuracy) and cross_accuracy > best_accuracy:
-            best_accuracy = cross_accuracy
+        val_auc = float(val_metrics["auc"])
+        val_accuracy = float(val_metrics["accuracy"])
+        auc_improved = math.isfinite(val_auc) and val_auc > best_auc
+        accuracy_improved = math.isfinite(val_accuracy) and val_accuracy > best_accuracy
         checkpoint_saved = False
 
-        if auc_improved:
-            best_auc = cross_auc
-            epochs_without_auc_improvement = 0
+        if accuracy_improved:
+            best_accuracy = val_accuracy
+            if auc_improved:
+                best_auc = val_auc
+            epochs_without_accuracy_improvement = 0
             save_checkpoint(
                 save_path=str(checkpoint_path),
                 epoch=epoch,
@@ -184,39 +185,34 @@ def run_training_loop(
                 best_accuracy=best_accuracy,
                 scheduler=scheduler,
                 config=config,
-                epochs_without_improvement=epochs_without_auc_improvement,
+                epochs_without_improvement=epochs_without_accuracy_improvement,
             )
             checkpoint_saved = True
         else:
-            epochs_without_auc_improvement += 1
+            epochs_without_accuracy_improvement += 1
 
         lrs_before = current_lrs(optimizer)
-        scheduler_metric = cross_auc if math.isfinite(cross_auc) else -math.inf
+        scheduler_metric = val_accuracy if math.isfinite(val_accuracy) else -math.inf
         scheduler.step(scheduler_metric)
         lrs_after = current_lrs(optimizer)
         was_lr_reduced = lr_reduced(lrs_before, lrs_after)
 
         print(f"Train | {format_metrics(train_metrics)}")
-        print(f"Cross | {format_metrics(cross_metrics)}")
+        print(f"Cross | {format_metrics(val_metrics)}")
         print(f"Current LR: {', '.join(f'{lr:.8g}' for lr in lrs_after)}")
         print(
-            f"Best cross AUC: {best_auc:.4f}"
-            if math.isfinite(best_auc)
-            else "Best cross AUC: n/a"
-        )
-        print(
-            f"Best cross accuracy: {best_accuracy:.4f}"
+            f"Best validation accuracy: {best_accuracy:.4f}"
             if math.isfinite(best_accuracy)
-            else "Best cross accuracy: n/a"
+            else "Best validation accuracy: n/a"
         )
-        print(f"Epochs without cross AUC improvement: {epochs_without_auc_improvement}")
+        print(f"Epochs without accuracy improvement: {epochs_without_accuracy_improvement}")
         print(f"Checkpoint saved: {'yes' if checkpoint_saved else 'no'}")
         print(f"LR reduced: {'yes' if was_lr_reduced else 'no'}")
 
-        if epochs_without_auc_improvement >= early_stopping_patience:
+        if epochs_without_accuracy_improvement >= early_stopping_patience:
             print(
-                f"Early stopping triggered after {epochs_without_auc_improvement} epochs "
-                "without cross AUC improvement."
+                f"Early stopping triggered after {epochs_without_accuracy_improvement} epochs "
+                "without validation accuracy improvement."
             )
             break
 
@@ -232,14 +228,14 @@ def main():
     save_dir = Path(config.get("save_dir", "checkpoints"))
     checkpoint_path = save_dir / str(config.get("checkpoint_name", "best_model.pth"))
 
-    train_loader, cross_loader = build_loaders(config)
+    train_loader, val_loader = build_loaders(config)
     print(f"Train samples: {len(train_loader.dataset)}")
-    print(f"Cross samples: {len(cross_loader.dataset)}")
+    print(f"Cross samples: {len(val_loader.dataset)}")
 
     run_training_loop(
         config=config,
         train_loader=train_loader,
-        cross_loader=cross_loader,
+        val_loader=val_loader,
         checkpoint_path=checkpoint_path,
         device=device,
         resume_path=args.resume or config.get("resume_from"),

@@ -16,6 +16,7 @@ deepfake_efficientnetb4/
 |-- models/backbones.py
 |-- utils/
 |-- train.py
+|-- train_cross.py
 |-- train_with_gan.py
 |-- test_origin_dataset.py
 |-- test_cross_dataset.py
@@ -162,6 +163,47 @@ train_real_percent: 50  # use 50% of train/original
 ```
 
 This only affects the origin training split. Validation, test, and GAN real data are unchanged.
+
+## Train Checkpoint Cross
+
+Use `train_cross.py` when you want the same training behavior as `train.py`, but with validation metrics computed on the cross dataset instead of the FF++ validation split.
+
+First configure the origin training data and cross-dataset root in `configs/config.yaml`:
+
+```yaml
+data_root: "path/to/ffpp_faces"
+train_dir: "train"
+cross_dataset_root: "path/to/cross_dataset/test"
+save_dir: "checkpoints_cross"
+checkpoint_name: "best_cross.pth"
+```
+
+The cross dataset must use this layout:
+
+```text
+cross_dataset_root/
+|-- real/
+`-- fake/
+```
+
+Then run:
+
+```bash
+python train_cross.py --config configs/config.yaml
+```
+
+Resume from a checkpoint:
+
+```bash
+python train_cross.py --config configs/config.yaml --resume checkpoints_cross/best_cross.pth
+```
+
+This script:
+
+- trains on `data_root/train_dir`
+- evaluates on `cross_dataset_root` after every epoch
+- saves a checkpoint when cross-dataset accuracy improves
+- uses `ReduceLROnPlateau(mode="max")` and early stopping based on cross-dataset accuracy
 
 ## Train With GAN Data
 
