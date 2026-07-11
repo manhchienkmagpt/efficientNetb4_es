@@ -103,8 +103,15 @@ class FAViTSwin(nn.Module):
         fused_dim = self.favit_dim + self.swin_dim
         self.classifier = nn.Sequential(
             nn.LayerNorm(fused_dim),
+            nn.Linear(fused_dim, 768),
+            nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(fused_dim, num_classes),
+            nn.LayerNorm(768),
+            nn.Linear(768, 256),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.LayerNorm(256),
+            nn.Linear(256, num_classes),
         )
 
     def train(self, mode: bool = True) -> "FAViTSwin":
