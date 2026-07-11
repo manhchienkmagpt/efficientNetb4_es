@@ -35,6 +35,7 @@ lr_scheduler_factor: 0.5
 min_lr: 1e-7
 
 use_pos_weight: true   # weight loss by num_real/num_fake to reduce fake-prediction bias
+pos_weight: 0.5       # null = auto num_real/num_fake; set a positive number for a manual value
 label_smoothing: 0.05  # soft targets: prevents overconfidence on FF++-specific features
 lambda_fal: 0.0        # set > 0 to add FALoss for redesigned_favit/favit_freq_lite
 fal_margin: 0.25

@@ -72,6 +72,22 @@ def _pos_weight(dataset, device: torch.device) -> Optional[torch.Tensor]:
     return torch.tensor([pw], device=device)
 
 
+def resolve_pos_weight(config: Dict, dataset, device: torch.device) -> Optional[torch.Tensor]:
+    """Return a manual pos_weight, an automatically calculated value, or None."""
+    if not config.get("use_pos_weight", False):
+        return None
+
+    manual_pos_weight = config.get("pos_weight")
+    if manual_pos_weight is None:
+        return _pos_weight(dataset, device)
+
+    pw = float(manual_pos_weight)
+    if pw <= 0:
+        raise ValueError("pos_weight must be greater than 0")
+    print(f"Using manual pos_weight: {pw:.4f}")
+    return torch.tensor([pw], device=device)
+
+
 def unpack_model_output(output):
     if isinstance(output, tuple):
         logits, features = output
@@ -214,7 +230,7 @@ def run_training_loop(
     ).to(device)
 
     label_smoothing = float(config.get("label_smoothing", 0.0))
-    pw = _pos_weight(train_loader.dataset, device) if config.get("use_pos_weight", False) else None
+    pw = resolve_pos_weight(config, train_loader.dataset, device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
     lambda_fal = float(config.get("lambda_fal", 0.0))
     fa_criterion = FALoss(

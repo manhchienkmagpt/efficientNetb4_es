@@ -11,13 +11,13 @@ from torch.utils.data import DataLoader
 from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
 from models import FALoss, build_model
 from train import (
-    _pos_weight,
     current_lrs,
     format_metrics,
     load_config,
     lr_reduced,
     parse_args,
     resolve_device,
+    resolve_pos_weight,
     run_one_epoch,
     set_seed,
 )
@@ -91,7 +91,7 @@ def run_training_loop(
     ).to(device)
 
     label_smoothing = float(config.get("label_smoothing", 0.0))
-    pw = _pos_weight(train_loader.dataset, device) if config.get("use_pos_weight", False) else None
+    pw = resolve_pos_weight(config, train_loader.dataset, device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pw)
     lambda_fal = float(config.get("lambda_fal", 0.0))
     fa_criterion = FALoss(
