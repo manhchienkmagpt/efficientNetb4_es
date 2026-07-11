@@ -1,6 +1,7 @@
 import timm
 from torch import nn
 
+from .fa_vit_swin import FAViTSwin
 from .favit_freq_lite import FAViTFreqLite
 from .redesigned_favit import RedesignedFAViT
 
@@ -88,6 +89,9 @@ _BACKBONE_ALIASES = {
     "favit_freq_lite": "favit_freq_lite",
     "favit-freq-lite": "favit_freq_lite",
     "favit_freq": "favit_freq_lite",
+    "fa_vit_swin": "fa_vit_swin",
+    "fa-vit-swin": "fa_vit_swin",
+    "favit_swin": "fa_vit_swin",
 }
 
 _TIMM_BACKBONES = {
@@ -112,6 +116,8 @@ def build_model(
     freq_in_channels: int = 3,
     freq_dim: int = 128,
     use_freq: bool = True,
+    favit_checkpoint: str | None = None,
+    swin_checkpoint: str | None = None,
 ) -> nn.Module:
     backbone_name = normalize_backbone_name(backbone)
     if backbone_name == "efficientnetb4":
@@ -131,6 +137,17 @@ def build_model(
             freq_in_channels=freq_in_channels,
             freq_dim=freq_dim,
             use_freq=use_freq,
+        )
+    if backbone_name == "fa_vit_swin":
+        if not favit_checkpoint or not swin_checkpoint:
+            raise ValueError(
+                "fa_vit_swin requires both 'favit_checkpoint' and 'swin_checkpoint'."
+            )
+        return FAViTSwin(
+            favit_checkpoint=favit_checkpoint,
+            swin_checkpoint=swin_checkpoint,
+            dropout=dropout,
+            image_size=image_size,
         )
     return TimmBackbone(
         model_name=_TIMM_BACKBONES[backbone_name],

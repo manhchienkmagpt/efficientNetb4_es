@@ -14,7 +14,9 @@ lr: 1e-4
 weight_decay: 1e-4
 dropout: 0.4
 pretrained: true
-backbone: "redesigned_favit"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, redesigned_favit, favit_freq_lite
+backbone: "redesigned_favit"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, redesigned_favit, favit_freq_lite, fa_vit_swin
+favit_checkpoint: null  # required for fa_vit_swin: trained redesigned_favit .pth
+swin_checkpoint: null   # required for fa_vit_swin: trained swin_small .pth
 freq_in_channels: 3
 freq_dim: 128
 use_freq: true

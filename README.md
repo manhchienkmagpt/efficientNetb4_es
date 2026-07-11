@@ -99,7 +99,7 @@ python train.py --config configs/config.yaml
 Choose a backbone in `configs/config.yaml`:
 
 ```yaml
-backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, redesigned_favit, favit_freq_lite
+backbone: "efficientnetb4"  # options: efficientnetb4, resnet50, swin_tiny, swin_small, redesigned_favit, favit_freq_lite, fa_vit_swin
 ```
 
 Available values:
@@ -110,6 +110,17 @@ Available values:
 - `swin_small`: Swin Transformer Small
 - `redesigned_favit`: frozen ViT-B/16 backbone with trainable GAM, LAM, CNN local branch, and classifier
 - `favit_freq_lite`: `redesigned_favit` style RGB branch plus a lightweight frequency CNN branch
+- `fa_vit_swin`: frozen trained `redesigned_favit` and `swin_small` branches with a trainable fusion classifier
+
+For `fa_vit_swin`, configure both source checkpoints:
+
+```yaml
+backbone: "fa_vit_swin"
+favit_checkpoint: "checkpoints_redesigned_favit/best_redesigned_favit.pth"
+swin_checkpoint: "checkpoints_swin_small/best_swin_small.pth"
+```
+
+Both source branches are loaded once and frozen. Only the final LayerNorm and binary classifier are trained.
 
 `redesigned_favit` and `favit_freq_lite` return raw logits plus features internally. Use `lambda_fal` to enable the optional forgery-aware loss:
 

@@ -88,6 +88,8 @@ def run_training_loop(
         freq_in_channels=int(config.get("freq_in_channels", 3)),
         freq_dim=int(config.get("freq_dim", 128)),
         use_freq=bool(config.get("use_freq", True)),
+        favit_checkpoint=config.get("favit_checkpoint"),
+        swin_checkpoint=config.get("swin_checkpoint"),
     ).to(device)
 
     label_smoothing = float(config.get("label_smoothing", 0.0))
