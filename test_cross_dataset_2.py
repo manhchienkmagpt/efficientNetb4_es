@@ -1,4 +1,5 @@
 import argparse
+import math
 from pathlib import Path
 from typing import List
 
@@ -19,6 +20,10 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 class NestedCrossDataset(DeepfakeFrameDataset):
     """Cross dataset with layout: root/{real,fake}/subfolder/frames."""
 
+    def __init__(self, *args, data_percent: float = 100.0, **kwargs):
+        self.data_percent = data_percent
+        super().__init__(*args, **kwargs)
+
     def _collect_class_images(self, class_dir: Path) -> List[Path]:
         image_paths: List[Path] = []
 
@@ -29,7 +34,19 @@ class NestedCrossDataset(DeepfakeFrameDataset):
                 if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
             )
 
-        return sorted(image_paths)
+        image_paths = sorted(image_paths)
+        if self.data_percent >= 100.0 or not image_paths:
+            return image_paths
+
+        keep_count = max(1, math.ceil(len(image_paths) * self.data_percent / 100.0))
+        return image_paths[-keep_count:]
+
+
+def percent(value: str) -> float:
+    parsed_value = float(value)
+    if not 0.0 < parsed_value <= 100.0:
+        raise argparse.ArgumentTypeError("percentage must be greater than 0 and at most 100")
+    return parsed_value
 
 
 def parse_args():
@@ -49,6 +66,12 @@ def parse_args():
     parser.add_argument(
         "--tta", action="store_true", help="Enable test-time augmentation (hflip + rotate +/-5 degrees)"
     )
+    parser.add_argument(
+        "--data-percent",
+        type=percent,
+        default=100.0,
+        help="Percentage of images to use from the end of each class (default: 100)",
+    )
     return parser.parse_args()
 
 
@@ -65,6 +88,7 @@ def main():
         eval_transform=get_eval_transform(int(config["image_size"])),
         original_upsample_factor=0,
         mode="test",
+        data_percent=args.data_percent,
     )
     loader = DataLoader(
         dataset,
@@ -106,6 +130,7 @@ def main():
         }
     ).to_csv(output_csv, index=False)
 
+    print(f"Using the last {args.data_percent:g}% of each class ({len(dataset)} images)")
     print(f"Cross Dataset 2 Test | {format_metrics(metrics)}")
     print("Confusion Matrix [[TN, FP], [FN, TP]]:")
     print(cm)
