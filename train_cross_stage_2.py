@@ -37,6 +37,11 @@ def parse_args():
         help="Checkpoint used to resume complete training state",
     )
     parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Start a new training run and ignore config key 'resume_from'",
+    )
+    parser.add_argument(
         "--max-steps",
         type=positive_int,
         default=None,
@@ -78,12 +83,21 @@ def main() -> None:
 
     device = resolve_device(str(config.get("device", "cuda")))
     train_loader, cross_loader = build_loaders(config)
-    resume_path, checkpoint = resolve_resume_checkpoint(
-        config=config,
-        requested_backbone=backbone,
-        device=device,
-        resume_arg=args.resume,
-    )
+    if args.no_resume and args.resume:
+        raise ValueError("--resume and --no-resume cannot be used together.")
+
+    if args.no_resume:
+        resume_path, checkpoint = None, None
+        print("Starting a new cross stage-two training run.")
+    else:
+        resume_path, checkpoint = resolve_resume_checkpoint(
+            config=config,
+            requested_backbone=backbone,
+            device=device,
+            resume_arg=args.resume,
+        )
+        if resume_path is None:
+            print("Starting a new cross stage-two training run.")
 
     save_dir = Path(
         config.get("cross_stage_2_save_dir", "checkpoints_cross_stage_2")
