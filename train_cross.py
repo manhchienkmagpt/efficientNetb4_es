@@ -1,6 +1,6 @@
 import math
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import nn
@@ -11,10 +11,12 @@ from torch.utils.data import DataLoader
 from datasets import DeepfakeFrameDataset, get_eval_transform, get_train_transform
 from models import FALoss, build_model
 from train import (
+    count_model_parameters,
     current_lrs,
     format_metrics,
     load_config,
     lr_reduced,
+    load_model_state_strict,
     parse_args,
     resolve_device,
     resolve_pos_weight,
@@ -76,7 +78,17 @@ def run_training_loop(
     checkpoint_path: Path,
     device: torch.device,
     resume_path: Optional[str] = None,
+    checkpoint_data: Optional[Dict[str, Any]] = None,
+    max_steps: Optional[int] = None,
+    log_parameter_counts: bool = False,
 ) -> None:
+    if checkpoint_data is not None and not resume_path:
+        raise ValueError("checkpoint_data requires resume_path")
+
+    active_checkpoint = checkpoint_data
+    if active_checkpoint is None and resume_path:
+        active_checkpoint = load_checkpoint(str(resume_path), device)
+
     threshold = float(config.get("threshold", 0.5))
     backbone = str(config.get("backbone", "efficientnetb4"))
     print(f"Backbone: {backbone}")
@@ -91,6 +103,13 @@ def run_training_loop(
         favit_checkpoint=config.get("favit_checkpoint"),
         swin_checkpoint=config.get("swin_checkpoint"),
     ).to(device)
+
+    if log_parameter_counts:
+        trainable_parameters, total_parameters = count_model_parameters(model)
+        print(
+            "Parameters: "
+            f"{trainable_parameters:,} trainable / {total_parameters:,} total"
+        )
 
     label_smoothing = float(config.get("label_smoothing", 0.0))
     pw = resolve_pos_weight(config, train_loader.dataset, device)
@@ -122,8 +141,8 @@ def run_training_loop(
     start_epoch = 1
 
     if resume_path:
-        checkpoint = load_checkpoint(str(resume_path), device)
-        model.load_state_dict(checkpoint["model_state_dict"])
+        checkpoint = active_checkpoint
+        load_model_state_strict(model, checkpoint, str(resume_path))
         if "optimizer_state_dict" in checkpoint:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if "scheduler_state_dict" in checkpoint:
@@ -157,6 +176,7 @@ def run_training_loop(
             label_smoothing=label_smoothing,
             fa_criterion=fa_criterion,
             lambda_fal=lambda_fal,
+            max_steps=max_steps,
         )
         val_metrics = run_one_epoch(
             model=model,
@@ -165,6 +185,7 @@ def run_training_loop(
             device=device,
             optimizer=None,
             threshold=threshold,
+            max_steps=max_steps,
         )
 
         val_auc = float(val_metrics["auc"])

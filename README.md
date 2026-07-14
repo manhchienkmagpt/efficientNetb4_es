@@ -17,6 +17,8 @@ deepfake_efficientnetb4/
 |-- utils/
 |-- train.py
 |-- train_cross.py
+|-- train_stage_2.py
+|-- train_cross_stage_2.py
 |-- train_with_gan.py
 |-- test_origin_dataset.py
 |-- test_cross_dataset.py
@@ -77,6 +79,27 @@ cross_dataset_root/
 |-- real/
 `-- fake/
 ```
+
+[WildDeepfake](https://www.kaggle.com/datasets/maysuni/wild-deepfake)
+stage-two training reuses `data_root`, `train_dir`, `val_dir`, and `test_dir`
+for this normalized layout:
+
+```text
+data_root/
+|-- train/
+|   |-- real/
+|   `-- fake/
+|-- val/
+|   |-- real/
+|   `-- fake/
+`-- test/
+    |-- real/
+    `-- fake/
+```
+
+Image discovery below every class folder is recursive, so nested video or
+sequence directories are included. WildDeepfake keeps the same binary labels:
+`real = 0` and `fake = 1`.
 
 Supported image extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp`.
 
@@ -215,6 +238,62 @@ This script:
 - evaluates on `cross_dataset_root` after every epoch
 - saves a checkpoint when cross-dataset accuracy improves
 - uses `ReduceLROnPlateau(mode="max")` and early stopping based on cross-dataset accuracy
+
+## WildDeepfake Stage-Two Training
+
+Stage-two training supports only `redesigned_favit` and `favit_freq_lite`.
+Point the existing dataset keys at the normalized WildDeepfake splits, then
+configure the separate stage-two output paths:
+
+```yaml
+data_root: "path/to/wilddeepfake_root"
+train_dir: "train"
+val_dir: "val"
+test_dir: "test"
+
+stage_2_save_dir: "checkpoints_stage_2"
+stage_2_checkpoint_name: "best_stage_2.pth"
+cross_stage_2_save_dir: "checkpoints_cross_stage_2"
+cross_stage_2_checkpoint_name: "best_cross_stage_2.pth"
+```
+
+`train_stage_2.py` starts from a stage-one checkpoint produced by `train.py`.
+It trains on `data_root/train_dir` and validates on `data_root/val_dir`.
+
+```bash
+python train_stage_2.py --config configs/config.yaml \
+  --resume checkpoints/best_model.pth
+```
+
+`train_cross_stage_2.py` starts from a stage-one checkpoint produced by
+`train_cross.py`. It trains on the WildDeepfake training split but continues to
+validate on `cross_dataset_root`; it does not use the WildDeepfake validation
+split.
+
+```bash
+python train_cross_stage_2.py --config configs/config.yaml \
+  --resume checkpoints_cross/best_cross.pth
+```
+
+The two scripts use the same resume behavior as `train.py` and
+`train_cross.py`: `--resume` overrides `resume_from` in the configuration and
+restores the model, optimizer, scheduler, saved epoch, best metrics, and
+early-stopping counter. Stage-two training requires one of those resume paths.
+To continue a later stage-two run, pass its matching stage-two checkpoint:
+
+```bash
+python train_stage_2.py --config configs/config.yaml \
+  --resume path/to/stage_2_checkpoint.pth
+
+python train_cross_stage_2.py --config configs/config.yaml \
+  --resume path/to/cross_stage_2_checkpoint.pth
+```
+
+Both scripts verify checkpoint `config.backbone` metadata before constructing
+the model, then load model weights strictly. Keep `backbone`, `dropout`,
+`image_size`, `lambda_fal`, `fal_margin`, and `fal_scale` consistent with the
+stage-one run. For `favit_freq_lite`, also keep `freq_in_channels`, `freq_dim`,
+and `use_freq` consistent.
 
 ## Train With GAN Data
 

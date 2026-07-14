@@ -1,7 +1,7 @@
 import argparse
 import math
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import yaml
@@ -108,6 +108,34 @@ def get_classifier_weight(model) -> Optional[torch.Tensor]:
     return None
 
 
+def count_model_parameters(model) -> Tuple[int, int]:
+    """Return the trainable and total parameter counts for a model."""
+    total = sum(parameter.numel() for parameter in model.parameters())
+    trainable = sum(
+        parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+    )
+    return trainable, total
+
+
+def load_model_state_strict(
+    model,
+    checkpoint: Dict[str, Any],
+    checkpoint_path: str,
+) -> None:
+    """Load model weights strictly and add checkpoint/config context to failures."""
+    if "model_state_dict" not in checkpoint:
+        raise KeyError(f"Checkpoint is missing 'model_state_dict': {checkpoint_path}")
+    try:
+        model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    except RuntimeError as error:
+        raise RuntimeError(
+            "Strict model-state loading failed for checkpoint "
+            f"'{checkpoint_path}'. Check that the backbone and all model-related "
+            "configuration values match the run that created the checkpoint. "
+            f"Original error: {error}"
+        ) from error
+
+
 def build_loaders(config: Dict) -> Tuple[DataLoader, DataLoader]:
     image_size = int(config["image_size"])
     train_transform = get_train_transform(image_size)
@@ -163,15 +191,17 @@ def run_one_epoch(
     label_smoothing: float = 0.0,
     fa_criterion=None,
     lambda_fal: float = 0.0,
+    max_steps: Optional[int] = None,
 ):
     is_train = optimizer is not None
     model.train(is_train)
     total_loss = 0.0
+    processed_samples = 0
     labels_all = []
     probs_all = []
 
     progress = tqdm(loader, desc="Train" if is_train else "Val", leave=False)
-    for images, labels, _ in progress:
+    for step, (images, labels, _) in enumerate(progress, start=1):
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
@@ -198,13 +228,19 @@ def run_one_epoch(
 
         batch_size = images.size(0)
         total_loss += loss.item() * batch_size
+        processed_samples += batch_size
         probs = torch.sigmoid(logits.detach().view(-1))
 
         labels_all.extend(labels.detach().cpu().numpy().tolist())
         probs_all.extend(probs.cpu().numpy().tolist())
         progress.set_postfix(loss=f"{loss.item():.4f}")
 
-    avg_loss = total_loss / len(loader.dataset)
+        if max_steps is not None and step >= max_steps:
+            break
+
+    if processed_samples == 0:
+        raise RuntimeError("The data loader did not yield any samples.")
+    avg_loss = total_loss / processed_samples
     return compute_binary_metrics(labels_all, probs_all, threshold=threshold, loss=avg_loss)
 
 
@@ -215,7 +251,17 @@ def run_training_loop(
     checkpoint_path: Path,
     device: torch.device,
     resume_path: Optional[str] = None,
+    checkpoint_data: Optional[Dict[str, Any]] = None,
+    max_steps: Optional[int] = None,
+    log_parameter_counts: bool = False,
 ) -> None:
+    if checkpoint_data is not None and not resume_path:
+        raise ValueError("checkpoint_data requires resume_path")
+
+    active_checkpoint = checkpoint_data
+    if active_checkpoint is None and resume_path:
+        active_checkpoint = load_checkpoint(str(resume_path), device)
+
     threshold = float(config.get("threshold", 0.5))
     backbone = str(config.get("backbone", "efficientnetb4"))
     print(f"Backbone: {backbone}")
@@ -230,6 +276,13 @@ def run_training_loop(
         favit_checkpoint=config.get("favit_checkpoint"),
         swin_checkpoint=config.get("swin_checkpoint"),
     ).to(device)
+
+    if log_parameter_counts:
+        trainable_parameters, total_parameters = count_model_parameters(model)
+        print(
+            "Parameters: "
+            f"{trainable_parameters:,} trainable / {total_parameters:,} total"
+        )
 
     label_smoothing = float(config.get("label_smoothing", 0.0))
     pw = resolve_pos_weight(config, train_loader.dataset, device)
@@ -263,8 +316,8 @@ def run_training_loop(
     start_epoch = 1
 
     if resume_path:
-        checkpoint = load_checkpoint(str(resume_path), device)
-        model.load_state_dict(checkpoint["model_state_dict"])
+        checkpoint = active_checkpoint
+        load_model_state_strict(model, checkpoint, str(resume_path))
         if "optimizer_state_dict" in checkpoint:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if "scheduler_state_dict" in checkpoint:
@@ -298,6 +351,7 @@ def run_training_loop(
             label_smoothing=label_smoothing,
             fa_criterion=fa_criterion,
             lambda_fal=lambda_fal,
+            max_steps=max_steps,
         )
         val_metrics = run_one_epoch(
             model=model,
@@ -306,6 +360,7 @@ def run_training_loop(
             device=device,
             optimizer=None,
             threshold=threshold,
+            max_steps=max_steps,
         )
 
         val_auc = float(val_metrics["auc"])
