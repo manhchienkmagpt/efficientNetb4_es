@@ -44,3 +44,17 @@ Nén **cả thư mục `results_video_level/`** và gửi. Trong đó có:
   CI cho frame-level AUC: bootstrap theo cụm, tức là lấy mẫu lại cả video rồi gộp các frame của video đó.
 - So sánh hai model: dùng DeLong paired ở video-level. Ở frame-level không dùng DeLong, vì các frame trong
   cùng video không độc lập; thay vào đó dùng paired cluster bootstrap.
+
+## Chỉ chạy FF++ (đủ 5 phương pháp, có FaceShifter)
+
+Dùng để điền các ô FSh/All còn trống trong paper.
+
+```bash
+# sửa root trong video_eval_manifest_ffpp.yaml: thư mục có val/ và test/, mỗi split có đủ 5 thư mục giả
+python eval_video_level.py --manifest video_eval_manifest_ffpp.yaml
+```
+
+- Nếu thiếu thư mục FaceShifter, preflight dừng ngay, trước khi load model.
+- Kết quả nằm trong `results_video_level_ffpp/`. Nén cả thư mục rồi gửi lại.
+- `per_source_ffpp.csv` và `paper_tables.md` có AUC theo từng phương pháp kèm 95% CI, và DeLong của từng cặp so sánh trên mỗi phương pháp.
+- Có thể lọc dataset từ manifest bất kỳ: `--datasets ffpp_val ffpp_test`.

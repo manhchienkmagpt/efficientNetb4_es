@@ -502,14 +502,36 @@ def analyze(frames: Dict[Tuple[str, str], pd.DataFrame], manifest: Dict, out_dir
                                 "n_units": len(vid)})
 
         if d.get("type", "cross") in {"ffpp", "origin", "original"}:
-            for src in sorted(vid.loc[vid["label"] == 1, "source"].unique()):
+            found = set(vid.loc[vid["label"] == 1, "source"].unique())
+            missing = [s for s in d.get("expected_sources") or [] if s not in found]
+            if missing:
+                sanity.append(f"[WARN] {dn}: no fake videos for {missing}; per-source results for them are blank.")
+            for src in sorted(found):
+                # Real videos vs the videos of one manipulation method, same real set for every method.
                 vmask = ((vid["label"] == 0) | (vid["source"] == src)).values
                 fmask = ((wide["label"] == 0) | (wide["source"] == src)).values
+                y_src = y_v[vmask]
+                boot_src = bootstrap_video(y_src, s_v[vmask], n_boot, rng)
                 for j, m in enumerate(models):
+                    lo, hi = ci(boot_src[:, j])
                     per_source.append({"dataset": dn, "source": src, "model": m,
-                                       "n_fake_videos": int((vid["source"] == src).sum()),
-                                       "video_auc": roc_auc_score(y_v[vmask], s_v[vmask, j]),
+                                       "n_real_videos": int((y_src == 0).sum()),
+                                       "n_fake_videos": int((y_src == 1).sum()),
+                                       "video_auc": roc_auc_score(y_src, s_v[vmask, j]),
+                                       "video_auc_ci_lo": lo, "video_auc_ci_hi": hi,
                                        "frame_auc": roc_auc_score(y_f[fmask], s_f[fmask, j])})
+                for a, b in pairs:
+                    if a not in models or b not in models:
+                        continue
+                    ia, ib = models.index(a), models.index(b)
+                    auc_a, auc_b, z, p = delong_paired(y_src, s_v[vmask, ia], s_v[vmask, ib])
+                    dv = boot_src[:, ia] - boot_src[:, ib]
+                    comparisons.append({"dataset": f"{dn}:{src}", "level": "video(mean)", "model_a": a,
+                                        "model_b": b, "auc_a": auc_a, "auc_b": auc_b,
+                                        "delta_pp": (auc_a - auc_b) * 100,
+                                        "delta_ci_lo_pp": ci(dv)[0] * 100, "delta_ci_hi_pp": ci(dv)[1] * 100,
+                                        "boot_p": boot_p(dv), "delong_z": z, "delong_p": p,
+                                        "n_units": int(vmask.sum())})
 
     if n_checks:
         verdict = "REPRODUCTION OK" if n_fail == 0 else "REPRODUCTION FAILED"
@@ -519,16 +541,17 @@ def analyze(frames: Dict[Tuple[str, str], pd.DataFrame], manifest: Dict, out_dir
     comp_df = pd.DataFrame(comparisons)
     summary_df.to_csv(out_dir / "summary_metrics.csv", index=False)
     comp_df.to_csv(out_dir / "comparisons.csv", index=False)
+    src_df = pd.DataFrame(per_source)
     if per_source:
-        pd.DataFrame(per_source).to_csv(out_dir / "per_source_ffpp.csv", index=False)
+        src_df.to_csv(out_dir / "per_source_ffpp.csv", index=False)
     (out_dir / "sanity.txt").write_text("\n".join(sanity) + "\n", encoding="utf-8")
-    write_paper_tables(summary_df, comp_df, models, out_dir / "paper_tables.md", n_boot)
+    write_paper_tables(summary_df, comp_df, models, out_dir / "paper_tables.md", n_boot, src_df)
     print("\n".join(sanity))
     print(f"\nDone. Results in: {out_dir.resolve()}")
 
 
 def write_paper_tables(summary: pd.DataFrame, comp: pd.DataFrame, models: List[str], path: Path,
-                       n_boot: int) -> None:
+                       n_boot: int, per_source: Optional[pd.DataFrame] = None) -> None:
     pct = lambda v: "--" if pd.isna(v) else f"{v * 100:.2f}"  # noqa: E731
     lines = ["# Video-level results (auto-generated)", "",
              f"Video score = mean of frame probabilities. 95% CI: stratified bootstrap over videos, "
@@ -568,6 +591,28 @@ def write_paper_tables(summary: pd.DataFrame, comp: pd.DataFrame, models: List[s
                              f"{pct(r['auc_b'])} | {r['delta_pp']:+.2f} [{r['delta_ci_lo_pp']:+.2f}, "
                              f"{r['delta_ci_hi_pp']:+.2f}] | {r['boot_p']:.4f} | {dp} |")
         lines.append("")
+    if per_source is not None and len(per_source):
+        for dn in per_source["dataset"].unique():
+            ps = per_source[per_source["dataset"] == dn]
+            sources = list(ps["source"].unique())
+            lines += [f"## {dn}: video AUC per manipulation (real vs. each method) [95% CI]", "",
+                      "| Model | " + " | ".join(sources) + " |", "|---|" + "---|" * len(sources)]
+            for m in models:
+                cells = []
+                for src in sources:
+                    r = ps[(ps["model"] == m) & (ps["source"] == src)].iloc[0]
+                    cells.append(f"{pct(r['video_auc'])} [{pct(r['video_auc_ci_lo'])}, {pct(r['video_auc_ci_hi'])}]")
+                lines.append(f"| {m} | " + " | ".join(cells) + " |")
+            c = comp[comp["dataset"].str.startswith(f"{dn}:")]
+            if len(c):
+                lines += ["", "| Method | A vs B | AUC A | AUC B | Δ (pp) [95% CI] | DeLong p |",
+                          "|---|---|---|---|---|---|"]
+                for _, r in c.iterrows():
+                    dp = "--" if pd.isna(r["delong_p"]) else f"{r['delong_p']:.4f}"
+                    lines.append(f"| {r['dataset'].split(':', 1)[1]} | {r['model_a']} vs {r['model_b']} | "
+                                 f"{pct(r['auc_a'])} | {pct(r['auc_b'])} | {r['delta_pp']:+.2f} "
+                                 f"[{r['delta_ci_lo_pp']:+.2f}, {r['delta_ci_hi_pp']:+.2f}] | {dp} |")
+            lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -590,6 +635,10 @@ def preflight_datasets(datasets: List[Dict]) -> None:
                 counts[class_dir.name] = (label, len(collect_class_images(class_dir)))
         by_label = {lab: sum(n for l, n in counts.values() if l == lab) for lab in (0, 1)}
         print(f"[preflight] {d['name']}: {split_dir} -> {counts}", flush=True)
+        present = {name.lower() for name, (_, n) in counts.items() if n > 0}
+        missing = [s for s in d.get("expected_sources") or [] if s.lower() not in present]
+        if missing:
+            problems.append(f"[{d['name']}] no images for expected manipulation folders {missing} in {split_dir}")
         if by_label[0] == 0 or by_label[1] == 0:
             children = sorted(p.name + ("/" if p.is_dir() else "") for p in split_dir.iterdir())[:20]
             problems.append(
@@ -600,8 +649,13 @@ def preflight_datasets(datasets: List[Dict]) -> None:
 
 
 def run(manifest_path: Path, out_override: Optional[str], analyze_only: bool, overwrite: bool,
-        n_boot_override: Optional[int]) -> None:
+        n_boot_override: Optional[int], only_datasets: Optional[List[str]] = None) -> None:
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    if only_datasets:
+        unknown = set(only_datasets) - {d["name"] for d in manifest["datasets"]}
+        if unknown:
+            raise ValueError(f"--datasets: unknown dataset names {sorted(unknown)}")
+        manifest["datasets"] = [d for d in manifest["datasets"] if d["name"] in only_datasets]
     if not analyze_only:
         preflight_datasets(manifest["datasets"])
     models = [m["name"] for m in manifest["models"]]
@@ -710,12 +764,14 @@ def main() -> None:
     parser.add_argument("--analyze-only", action="store_true", help="Reuse cached frame CSVs, no GPU")
     parser.add_argument("--overwrite", action="store_true", help="Re-predict even if cached CSVs exist")
     parser.add_argument("--n-boot", type=int, default=None)
+    parser.add_argument("--datasets", nargs="+", default=None,
+                        help="Only evaluate these dataset names from the manifest (e.g. ffpp_val ffpp_test)")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
     if args.selftest:
         selftest()
         return
-    run(Path(args.manifest), args.out, args.analyze_only, args.overwrite, args.n_boot)
+    run(Path(args.manifest), args.out, args.analyze_only, args.overwrite, args.n_boot, args.datasets)
 
 
 if __name__ == "__main__":

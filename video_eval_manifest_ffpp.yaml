@@ -1,0 +1,58 @@
+# Manifest chỉ cho FF++ (5 phương pháp giả, có FaceShifter), để điền các ô FSh/All còn trống trong paper.
+# Chạy:  python eval_video_level.py --manifest video_eval_manifest_ffpp.yaml
+# Cả 5 model test trên CÙNG một bộ ảnh. Bộ ảnh phải có đủ thư mục FaceShifter, nếu không preflight sẽ dừng trước khi load model.
+
+output_dir: results_video_level_ffpp
+n_boot: 2000
+seed: 42
+num_workers: 4
+
+datasets:
+  # FF++ val: CHỈ dùng để chọn ngưỡng video-level (Youden). Không báo cáo trong bảng.
+  - name: ffpp_val
+    role: val
+    type: ffpp
+    root: "E:\\Deepfake_Data_Chien\\ffpp_faces_mtcnn" # <ĐIỀN> thư mục cha có val/ và test/, mỗi split có đủ 5 phương pháp giả
+    split: val
+    expected_videos: 840 # 140 x (real + 5 phương pháp)
+    expected_sources: [Deepfakes, Face2Face, FaceSwap, NeuralTextures, FaceShifter]
+
+  - name: ffpp_test
+    type: ffpp
+    root: "E:\\Deepfake_Data_Chien\\ffpp_faces_mtcnn" # <ĐIỀN> giống ffpp_val
+    split: test
+    expected_videos: 840
+    expected_sources: [Deepfakes, Face2Face, FaceSwap, NeuralTextures, FaceShifter]
+
+# Cùng checkpoint với video_eval_manifest.yaml.
+models:
+  - name: efficientnet_b4
+    checkpoint: checkpoints_efficientnetb4/best_efficientnetb4.pth
+    tta: false
+    expected_frame_metrics: { ffpp_test: [93.25, 95.26, 95.91, 96.87, 94.97] }
+
+  - name: resnet50
+    checkpoint: checkpoints_resnet50/best_resnet50.pth
+    tta: false
+    expected_frame_metrics: { ffpp_test: [93.39, 95.32, 96.04, 95.86, 96.22] }
+
+  - name: swin
+    checkpoint: checkpoints_swin_small/best_swin_small.pth
+    tta: false
+    expected_frame_metrics: { ffpp_test: [95.57, 97.37, 97.35, 96.97, 97.74] }
+
+  - name: favit
+    checkpoint: checkpoints_redesigned_favit/best_redesigned_favit_mtcnn.pth
+    tta: false
+    expected_frame_metrics: { ffpp_test: [95.79, 98.44, 97.47, 97.72, 97.21] }
+
+  - name: favit_cnn
+    checkpoint: checkpoints_favit_freq_lite/best_favit_freq_lite_mtcnn.pth
+    tta: false
+    expected_frame_metrics: { ffpp_test: [96.02, 98.62, 97.63, 97.06, 98.20] }
+
+compare:
+  - [favit_cnn, favit]
+  - [favit_cnn, swin]
+  - [favit_cnn, resnet50]
+  - [favit_cnn, efficientnet_b4]
