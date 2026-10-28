@@ -51,6 +51,28 @@ def label_mapping(dataset_entry: Dict) -> Optional[Dict[str, int]]:
     """Optional `label_dirs: {"0": 0, "1": 1}` for folders not named real/fake (0 = real, 1 = fake)."""
     dirs = dataset_entry.get("label_dirs")
     return {str(k): int(v) for k, v in dirs.items()} if dirs else None
+
+
+# Module level (not inside a function) so DataLoader workers can pickle it on Windows (spawn).
+try:
+    from datasets import DeepfakeFrameDataset as _BaseFrameDataset
+except ImportError:  # --selftest / --analyze-only without the training dependencies
+    _BaseFrameDataset = None
+
+if _BaseFrameDataset is not None:
+    class MappedFrameDataset(_BaseFrameDataset):
+        """Same loader as the frame-level test; only the folder-name -> label map can be overridden."""
+
+        def __init__(self, *args, label_map: Optional[Dict[str, int]] = None, **kwargs) -> None:
+            self.label_map = label_map
+            super().__init__(*args, **kwargs)
+
+        def _get_class_mapping(self) -> Dict[str, int]:
+            return dict(self.label_map) if self.label_map else super()._get_class_mapping()
+else:
+    MappedFrameDataset = None
+
+
 RESERVED_COLUMNS = {"image_path", "label", "prob", "video_id", "source"}
 MAIN_THRESHOLD = 0.5
 
@@ -143,18 +165,13 @@ def load_model(model_entry: Dict):
 def predict_frames(model, device, config: Dict, dataset_entry: Dict, model_entry: Dict,
                    batch_size: Optional[int], num_workers: Optional[int]) -> pd.DataFrame:
     from torch.utils.data import DataLoader
-    from datasets import DeepfakeFrameDataset, get_eval_transform
+    from datasets import get_eval_transform
     from utils.inference import predict, predict_tta
 
-    mapping = label_mapping(dataset_entry)
-
-    class MappedFrameDataset(DeepfakeFrameDataset):
-        """Same loader as the frame-level test; only the folder-name -> label map is overridden."""
-
-        def _get_class_mapping(self):
-            return dict(mapping) if mapping else super()._get_class_mapping()
-
+    if MappedFrameDataset is None:
+        raise ImportError("Cannot import datasets.DeepfakeFrameDataset; run from the efficientNetb4_es folder.")
     dataset = MappedFrameDataset(
+        label_map=label_mapping(dataset_entry),
         root_dir=dataset_entry["root"],
         split=dataset_entry.get("split"),
         dataset_type=dataset_entry.get("type", "cross"),
