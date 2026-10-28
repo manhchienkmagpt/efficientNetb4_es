@@ -542,9 +542,37 @@ def write_paper_tables(summary: pd.DataFrame, comp: pd.DataFrame, models: List[s
 
 # --------------------------------------------------------------------------- driver
 
+def preflight_datasets(datasets: List[Dict]) -> None:
+    """Fail before loading any model if a dataset folder does not match the frame-level loader's layout."""
+    from datasets.deepfake_dataset import CROSS_DATASET_LABELS, collect_class_images, find_class_dir
+
+    problems = []
+    for d in datasets:
+        split_dir = Path(d["root"]) / d["split"] if d.get("split") else Path(d["root"])
+        if not split_dir.is_dir():
+            problems.append(f"[{d['name']}] folder does not exist: {split_dir}")
+            continue
+        counts = {}
+        for class_name, label in CROSS_DATASET_LABELS.items():
+            class_dir = find_class_dir(split_dir, class_name)
+            if class_dir.exists():
+                counts[class_dir.name] = (label, len(collect_class_images(class_dir)))
+        by_label = {lab: sum(n for l, n in counts.values() if l == lab) for lab in (0, 1)}
+        print(f"[preflight] {d['name']}: {split_dir} -> {counts}", flush=True)
+        if by_label[0] == 0 or by_label[1] == 0:
+            children = sorted(p.name + ("/" if p.is_dir() else "") for p in split_dir.iterdir())[:20]
+            problems.append(
+                f"[{d['name']}] need images under real/fake (or original + manipulation) folders in {split_dir}; "
+                f"found real={by_label[0]}, fake={by_label[1]}. Contents: {children}")
+    if problems:
+        raise RuntimeError("Dataset folder check failed:\n  " + "\n  ".join(problems))
+
+
 def run(manifest_path: Path, out_override: Optional[str], analyze_only: bool, overwrite: bool,
         n_boot_override: Optional[int]) -> None:
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    if not analyze_only:
+        preflight_datasets(manifest["datasets"])
     models = [m["name"] for m in manifest["models"]]
     clash = RESERVED_COLUMNS.intersection(models)
     if clash or len(set(models)) != len(models):
