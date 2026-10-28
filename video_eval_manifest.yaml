@@ -27,6 +27,7 @@ datasets:
     type: cross
     root: "E:\\Deepfake_Data_Chien\\ffpp_celebdf_data\\processed\\faces\\celebdf\\test" # <ĐIỀN>
     expected_videos: 518 # 178 real + 340 fake
+    label_dirs: { "0": 0, "1": 1 }   # thư mục test/0 = real, test/1 = fake
 
   - name: uadfv
     type: cross

@@ -43,8 +43,14 @@ if str(SCRIPT_DIR) not in sys.path:
 # <dataset>_<split>_<source>_<video_id>_sample000012_frame000345.jpg  ->  group "video"
 FRAME_RE = re.compile(r"^(?P<video>.+)_sample\d+_frame\d+$")
 CLASS_DIR_NAMES = {
-    "real", "fake", "original", "deepfakes", "face2face", "faceshifter", "faceswap", "neuraltextures",
+    "real", "fake", "original", "deepfakes", "face2face", "faceshifter", "faceswap", "neuraltextures", "0", "1",
 }
+
+
+def label_mapping(dataset_entry: Dict) -> Optional[Dict[str, int]]:
+    """Optional `label_dirs: {"0": 0, "1": 1}` for folders not named real/fake (0 = real, 1 = fake)."""
+    dirs = dataset_entry.get("label_dirs")
+    return {str(k): int(v) for k, v in dirs.items()} if dirs else None
 RESERVED_COLUMNS = {"image_path", "label", "prob", "video_id", "source"}
 MAIN_THRESHOLD = 0.5
 
@@ -140,7 +146,15 @@ def predict_frames(model, device, config: Dict, dataset_entry: Dict, model_entry
     from datasets import DeepfakeFrameDataset, get_eval_transform
     from utils.inference import predict, predict_tta
 
-    dataset = DeepfakeFrameDataset(
+    mapping = label_mapping(dataset_entry)
+
+    class MappedFrameDataset(DeepfakeFrameDataset):
+        """Same loader as the frame-level test; only the folder-name -> label map is overridden."""
+
+        def _get_class_mapping(self):
+            return dict(mapping) if mapping else super()._get_class_mapping()
+
+    dataset = MappedFrameDataset(
         root_dir=dataset_entry["root"],
         split=dataset_entry.get("split"),
         dataset_type=dataset_entry.get("type", "cross"),
@@ -553,7 +567,7 @@ def preflight_datasets(datasets: List[Dict]) -> None:
             problems.append(f"[{d['name']}] folder does not exist: {split_dir}")
             continue
         counts = {}
-        for class_name, label in CROSS_DATASET_LABELS.items():
+        for class_name, label in (label_mapping(d) or CROSS_DATASET_LABELS).items():
             class_dir = find_class_dir(split_dir, class_name)
             if class_dir.exists():
                 counts[class_dir.name] = (label, len(collect_class_images(class_dir)))
