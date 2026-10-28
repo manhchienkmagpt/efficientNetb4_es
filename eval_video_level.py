@@ -635,8 +635,15 @@ def preflight_datasets(datasets: List[Dict]) -> None:
                 counts[class_dir.name] = (label, len(collect_class_images(class_dir)))
         by_label = {lab: sum(n for l, n in counts.values() if l == lab) for lab in (0, 1)}
         print(f"[preflight] {d['name']}: {split_dir} -> {counts}", flush=True)
-        present = {name.lower() for name, (_, n) in counts.items() if n > 0}
-        missing = [s for s in d.get("expected_sources") or [] if s.lower() not in present]
+        # A method folder may sit directly in the split (split/FaceShifter) or inside a class folder
+        # (split/fake/FaceShifter); both are labelled through their class folder by the frame-level loader.
+        method_dirs = {p.name.lower(): p for p in list(split_dir.iterdir()) + list(split_dir.glob("*/*"))
+                       if p.is_dir()}
+        source_counts = {s: len(collect_class_images(method_dirs[s.lower()])) if s.lower() in method_dirs else 0
+                         for s in d.get("expected_sources") or []}
+        if source_counts:
+            print(f"[preflight] {d['name']}: images per manipulation {source_counts}", flush=True)
+        missing = [s for s, n in source_counts.items() if n == 0]
         if missing:
             problems.append(f"[{d['name']}] no images for expected manipulation folders {missing} in {split_dir}")
         if by_label[0] == 0 or by_label[1] == 0:

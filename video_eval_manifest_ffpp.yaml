@@ -12,14 +12,14 @@ datasets:
   - name: ffpp_val
     role: val
     type: ffpp
-    root: "E:\\Deepfake_Data_Chien\\ffpp_faces_mtcnn" # <ĐIỀN> thư mục cha có val/ và test/, mỗi split có đủ 5 phương pháp giả
+    root: "E:\\Deepfake_Data_Chien\\ffpp_celebdf_data\\processed\\faces\\ffpp\\c23" # cùng root lần trước; {split}/fake/FaceShifter đã được thêm
     split: val
     expected_videos: 840 # 140 x (real + 5 phương pháp)
     expected_sources: [Deepfakes, Face2Face, FaceSwap, NeuralTextures, FaceShifter]
 
   - name: ffpp_test
     type: ffpp
-    root: "E:\\Deepfake_Data_Chien\\ffpp_faces_mtcnn" # <ĐIỀN> giống ffpp_val
+    root: "E:\\Deepfake_Data_Chien\\ffpp_celebdf_data\\processed\\faces\\ffpp\\c23"
     split: test
     expected_videos: 840
     expected_sources: [Deepfakes, Face2Face, FaceSwap, NeuralTextures, FaceShifter]

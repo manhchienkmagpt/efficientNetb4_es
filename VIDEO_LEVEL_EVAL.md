@@ -50,7 +50,7 @@ Nén **cả thư mục `results_video_level/`** và gửi. Trong đó có:
 Dùng để điền các ô FSh/All còn trống trong paper.
 
 ```bash
-# sửa root trong video_eval_manifest_ffpp.yaml: thư mục có val/ và test/, mỗi split có đủ 5 thư mục giả
+# root giữ như cũ; FaceShifter nằm trong {val,test}/fake/FaceShifter/<video>/<frame>.jpg
 python eval_video_level.py --manifest video_eval_manifest_ffpp.yaml
 ```
 
